@@ -19,6 +19,96 @@ from scipy.stats import hypergeom
 
 # For tested interaction matrix, assume that every interaction has been tested (exhaustive algorithm)
 
+def check_collection_overlap(collection1, collection2):
+    for ele in collection1:
+        if(ele in collection2):
+            return True
+        
+    return False
+
+def generate_gene_blocks(fname:str, distance:int):
+    # Take in a plink range file and aggregate together genes/regulatory elements 
+    # that are located closely together into blocks. 
+    # Write out blocks, one per line, into a new file. 
+    
+    ranges = dict()
+    pairs = []
+    blocks = []
+    
+    with open(fname) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=' ')
+        for row in csv_reader:
+            ranges[row[3]] = ((row[0]), int(row[1]), int(row[2]))
+            
+    
+    for k,v in ranges.items():
+        chrom1 = v[0]
+        start1 = v[1]
+        end1 = v[2]
+        paired = False
+        for k2,v2 in ranges.items():
+            if(v == v2):
+                continue
+            
+            #print(k, k2)
+            
+            chrom2 = v2[0]
+            start2 = v2[1]
+            end2 = v2[2]
+            
+            # Detect one element within another element
+            if(chrom1 == chrom2 and ((start1 < start2 < end1) or (start1 < end2 < end1)
+                                       or (start2 < start1 < end2) or (start2 < end1 < end2))):
+                pairs.append((k,k2))
+                paired = True
+            # Detect neighboring elements
+            elif(chrom1 == chrom2 and (abs(start2 - end1)<=distance or abs(start1 - end2)<=distance)):
+                pairs.append((k,k2))
+                paired = True
+                
+        if(not paired):
+            blocks.append({k})
+            
+    #print("Pairs: ", pairs)
+    
+    
+    used_pairs = []
+    # Now conglomerate the pairs into blocks
+    for pair in pairs:
+        reverse_pair = (pair[1], pair[0])
+        if(pair in used_pairs or reverse_pair in used_pairs):
+            continue
+        
+        curr_block = {pair[0], pair[1]}
+        for pair2 in pairs:
+            if(pair2 in used_pairs):
+                pass
+            elif(pair == pair2):
+                pass
+            elif(check_collection_overlap(curr_block, pair2)):
+                curr_block.add(pair2[0])
+                curr_block.add(pair2[1])
+                
+                used_pairs.append(pair2)
+                
+        
+        used_pairs.append(pair)
+        blocks.append(curr_block)
+                
+    return blocks
+               
+
+def summation_func(n:int):
+    # Sum (n-1) + (n-2) + ... + 2 + 1 + 0
+    assert(n > 1)
+    result = 0
+    n = n-1
+    while n > 0:
+        result += n
+        n -= 1
+        
+    return result
+
 def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str):
     interval_length = total_markers//num_cpus
     
@@ -43,12 +133,14 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str):
         with open(fname_out_py, 'w') as writer:
             writer.write('from BiClustering import *\n')
             writer.write('if __name__ == "__main__":\n')
+            writer.write('\tassert sys.version_info.major == 3\n')
+            writer.write('\tassert sys.version_info.minor >= 7\n')
             writer.write("\tmarker_file = '/gpfs/group/home/slistopad/BiClustering/biclustering_pub_marker_pairs.csv'\n")
             writer.write('\tN,n,inter_matrix,up_tri = initialize_matrices(' + tot_marks + ', marker_file)\n')
             writer.write("\tout_dir = '/gpfs/group/home/slistopad/BiClustering/'\n")
             writer.write('\ti_start, i_end = '+i_s+', '+i_e+'\n')
-            writer.write('\tkm_results = compute_k_m_parallel('+ tot_marks + ',60, inter_matrix, up_tri, i_start, i_end)\n')
-            writer.write('\tcompute_interval_pval_parallel(km_results, N, n, i_start, i_end, out_dir)\n')
+            writer.write('\tkm_results = compute_k_m_parallel('+ tot_marks + ',60, inter_matrix, up_tri, i_start, i_end, N, n)\n')
+            writer.write('\tcompute_interval_pval_parallel(km_results, N, n, i_start, i_end, 60, out_dir)\n')
             
             if(counter == 0):
                 writer.write('\tpval_results = []\n')
@@ -230,7 +322,7 @@ def comp_alt(i:int, j:int, a:int, b:int, inter_matrix:'np.array', upper_triangul
     return k_val, m_val
 
 def compute_k_m_parallel(total_markers:int, max_inter_length:int, inter_matrix:dict,
-                         upper_triangular:bool, i_start:int, i_end:int):
+                         upper_triangular:bool, i_start:int, i_end:int, N:int, n:int):
     
     # Our only knowledge about inter_matrix is that it consists of 1s and 0s 
     # and that 1s are typically very sparce.
@@ -276,7 +368,11 @@ def compute_k_m_parallel(total_markers:int, max_inter_length:int, inter_matrix:d
                                 k_is_zero = True
                                 a_thresh = a
                                 b_thresh = b
-                        km_results[(i,j,a,b)] = (k,m)
+                        # Do not store the k,m pair if k < expected value (m*n/N)
+                        if(k > (m*n/N)):
+                            km_results[(i,j,a,b)] = (k,m)
+                        else:
+                            pass
                         
                         # writer.write(str(i)+','+str(j)+','+str(a)+','+str(b)+','+str(k)+','+str(m))
                         
@@ -300,33 +396,54 @@ def compute_k_m_parallel(total_markers:int, max_inter_length:int, inter_matrix:d
 
 
 def compute_interval_pval_parallel(km_results:dict, N:int, n:int, i_start:int, i_end:int,
-                                   out_dir:str):
+                                   max_inter_length:int, out_dir:str):
+    # Assume that all k values are bigger than expected k-value of (m*n/N)
+    
+    computed_pvals = dict()
+    #correction = 0.05 / ((N**2) * (max_inter_length**2) * 0.5)
+    correction = 0.05/((N**2)*0.5)
+    
     filename = out_dir + 'pval_results_' + str(i_start) + '_' + str(i_end) + '.csv'
     with open(filename, 'w') as writer:
     
         pval_results = dict()
+        # i = 0
         for key,val in km_results.items():
             k,m = val[0], val[1]
             max_k = min(m, n)
-            min_k = max(0, m-(N-n))
+            # min_k = max(0, m-(N-n))
             pval_results[key] = 0
-            if(k > (m*n/N)):
-                while k <= max_k:
-                    pval_results[key] += hypergeom.pmf(k,N,n,m)
-                    k += 1
-            else:
-                while k >= min_k:
-                    pval_results[key] += hypergeom.pmf(k, N, n, m)
-                    k -= 1
-            
-            if(pval_results[key] != 1.0):
-                # Do not write out the p-value for this interval pair if its 1.0
-                # Assumming that number of interacting marker pairs is sparce this drastically 
-                # cuts down on number of writes. 
-                writer.write(str(key[0])+','+str(key[1])+','+str(key[2])+','+str(key[3])+',')
-                writer.write(str(val[0]) + ',' + str(m) + ',' + str(pval_results[key]) + '\n')
-    
-    return
+                
+            # First check if a p-value for the following k,m pair has already been computed.
+            try:
+                pval_results[key] = computed_pvals[(val[0],m)]
+            except KeyError:
+                # If it has not been, then compute the p-value and store it.
+                # if(k > (m*n/N)):
+                
+                pval_results[key] = hypergeom.sf(k-1,N,n,m)
+                # while k <= max_k:
+                #     pval_results[key] += hypergeom.pmf(k,N,n,m)
+                #     k += 1
+                
+                if(pval_results[key] < correction):
+                    print(pval_results[key])
+                    writer.write(str(key[0])+','+str(key[1])+','+str(key[2])+','+str(key[3])+',')
+                    writer.write(str(val[0]) + ',' + str(m) + ',' + str(pval_results[key]) + '\n')
+                # We do not care about interval pairs that have unusually low 
+                # number of interacting pairs
+                #else:
+                    # while k >= min_k:
+                    #     pval_results[key] += hypergeom.pmf(k, N, n, m)
+                    #     k -= 1
+                    
+                computed_pvals[(val[0],m)] = pval_results[key]
+                
+            # i += 1
+            # if(i%1000 == 0):
+            #     print(i)
+            #     print(len(computed_pvals))
+    return pval_results
 
 def trim_intervals(sorted_intervals:list):
     # Now go through interval pairs starting from most significant, and remove all overlapping 
@@ -368,6 +485,42 @@ def trim_intervals(sorted_intervals:list):
     return culled_inter_pairs
 
 class TestBiClusterCodeBase(unittest.TestCase):  
+    
+    def test_generate_gene_blocks(self):
+        fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
+        fname += 'Test_Ranges.txt'
+        blocks = generate_gene_blocks(fname, 3000)
+        expected_blocks = [{'TEST3'}, {'TEST4'}, {'TEST5'}, {'TEST6'}, {'TEST11'}, {'TEST12'},
+                           {'TEST22'}, {'TEST2', 'TEST1'}, {'TEST9', 'TEST10', 'TEST8', 'TEST7'},
+                           {'TEST13', 'TEST14', 'TEST16', 'TEST18'},
+                           {'TEST15', 'TEST19', 'TEST21', 'TEST20', 'TEST17'}]
+        
+        self.assertTrue(len(blocks) == len(expected_blocks))
+        for block in expected_blocks:
+            self.assertTrue(block in blocks)
+            
+        blocks = generate_gene_blocks(fname, 200)
+        expected_blocks = [{'TEST1'}, {'TEST2'}, {'TEST3'}, {'TEST4'}, {'TEST5'},
+                           {'TEST6'}, {'TEST8'}, {'TEST9'}, {'TEST11'}, {'TEST12'},
+                           {'TEST16'}, {'TEST18'}, {'TEST20'}, {'TEST21'}, {'TEST22'},
+                           {'TEST10', 'TEST7'}, {'TEST13', 'TEST14'},
+                           {'TEST19', 'TEST15', 'TEST17'}]
+        
+        self.assertTrue(len(blocks) == len(expected_blocks))
+        for block in expected_blocks:
+            self.assertTrue(block in blocks)
+            
+        blocks = generate_gene_blocks(fname, 1000)
+        expected_blocks = [{'TEST1'}, {'TEST2'}, {'TEST3'}, {'TEST4'}, {'TEST5'}, {'TEST6'},
+                           {'TEST11'}, {'TEST12'}, {'TEST22'}, 
+                           {'TEST9', 'TEST10', 'TEST8', 'TEST7'},
+                           {'TEST13', 'TEST14', 'TEST18', 'TEST16'},
+                           {'TEST15', 'TEST19', 'TEST21', 'TEST20', 'TEST17'}]
+        
+        self.assertTrue(len(blocks) == len(expected_blocks))
+        for block in expected_blocks:
+            self.assertTrue(block in blocks)
+        
     
     def test_check_overlap(self):
         self.assertFalse(check_overlap(0,0,2,2,0,0,2,2))
@@ -495,16 +648,110 @@ class TestBiClusterCodeBase(unittest.TestCase):
         inter_matrix[(5,8)] = 1
         inter_matrix[(5,9)] = 1
         
-        km_results = compute_k_m_parallel(10, 4, inter_matrix, True, 5, 6)
-
-        # print(km_results)
+        # Note, technically, the last parameter should be 3, but we enter 0 
+        # to force all k,m pairs to be written.
+        km_results = compute_k_m_parallel(10, 4, inter_matrix, True, 0, 9, 45, 0)
         
-        self.assertEqual(km_results[(5,0,4,4)], (0,0))
-        self.assertEqual(km_results[(5,3,4,4)], (0,1))
+        self.assertEqual(km_results[(0,5,4,4)], (1,16))
+        self.assertEqual(km_results[(0,8,3,1)], (1,3))
+        self.assertEqual(km_results[(1,7,2,2)], (1,4))
+        self.assertEqual(km_results[(2,5,4,4)], (2,15))
+        self.assertEqual(km_results[(2,8,4,2)], (3,8))
+        self.assertEqual(km_results[(4,7,3,3)], (2,9))
+        
+        self.assertEqual(km_results[(5,5,4,4)], (1,6))
+        self.assertEqual(km_results[(5,5,3,4)], (1,6))
+        self.assertEqual(km_results[(5,5,2,4)], (1,5))
+        self.assertEqual(km_results[(5,5,1,4)], (1,3))
+        self.assertEqual(km_results[(5,6,4,4)], (2,10))
+        self.assertEqual(km_results[(5,6,4,3)], (1,6))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,3)], (1,6))
+        self.assertEqual(km_results[(5,6,2,4)], (2,7))
+        
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        self.assertEqual(km_results[(5,6,3,4)], (2,9))
+        
         self.assertEqual(km_results[(5,6,2,4)], (2,7))
         self.assertEqual(km_results[(5,8,1,1)], (1,1))
         self.assertEqual(km_results[(5,8,1,2)], (2,2))
         self.assertEqual(km_results[(5,8,2,1)], (1,2))
+        
+        inter_matrix = dict()
+        i, j = 0, 0
+        while i < 10:
+            j = 0
+            while j < 10:
+                inter_matrix[(i,j)] = 0
+                j += 1
+            i += 1
+            
+        inter_matrix[(2,8)] = 1
+        
+        # Note, technically, the last parameter should be 1, but we enter 0 
+        # to force all k,m pairs to be written.
+        km_results = compute_k_m_parallel(10, 4, inter_matrix, True, 0, 9, 45, 0)
+        self.assertEqual(len(km_results), 63)
+      
+    def test_compute_interval_pval_parallel(self):
+        inter_matrix = dict()
+        i, j = 0, 0
+        while i < 10:
+            j = 0
+            while j < 10:
+                inter_matrix[(i,j)] = 0
+                j += 1
+            i += 1
+            
+        inter_matrix[(2,8)] = 1
+        inter_matrix[(5,8)] = 1
+        inter_matrix[(5,9)] = 1
+        
+        # Note, technically, the last parameter should be 3, but we enter 0 
+        # to force all k,m pairs to be written.
+        km_results = compute_k_m_parallel(10, 4, inter_matrix, True, 0, 9, 45, 0)
+        out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Output/'
+        pval_results = compute_interval_pval_parallel(km_results, 45, 3, 0, 9, 4, out_dir)
+        #print(pval_results)
+        
+        self.assertEqual(pval_results[(0,5,4,4)], 0.7424947145877375)
+        self.assertEqual(pval_results[(0,8,3,1)], 0.19097956307258632)
+        self.assertEqual(pval_results[(1,7,2,2)], 0.24876673713883074)
+        self.assertEqual(pval_results[(2,5,4,4)], 0.2540521494009871)
+        self.assertEqual(pval_results[(2,8,4,2)], 0.0039464411557434895)
+        self.assertEqual(pval_results[(4,7,3,3)], 0.09725158562367894)
+        
+        self.assertEqual(pval_results[(5,5,4,4)], 0.35595489781536405)
+        self.assertEqual(pval_results[(5,5,3,4)], 0.35595489781536405)
+        self.assertEqual(pval_results[(5,5,2,4)], 0.30373502466525815)
+        self.assertEqual(pval_results[(5,5,1,4)], 0.19097956307258632)
+        self.assertEqual(pval_results[(5,6,4,4)], 0.11945031712473582)
+        self.assertEqual(pval_results[(5,6,4,3)], 0.35595489781536405)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,3)], 0.35595489781536405)
+        self.assertEqual(pval_results[(5,6,2,4)], 0.058703312191684544)
+        
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        
+        self.assertEqual(pval_results[(5,6,2,4)], 0.058703312191684544)
+        self.assertEqual(pval_results[(5,8,1,1)], 0.06666666666666664)
+        self.assertEqual(pval_results[(5,8,1,2)], 0.003030303030303028)
+        self.assertEqual(pval_results[(5,8,2,1)], 0.13030303030303028)
         
      
     def test_convert_dict_to_2D_numpy_array(self):
@@ -533,6 +780,8 @@ def test_suite():
     unit_test_suite.addTest(TestBiClusterCodeBase('test_comp_alt'))
     unit_test_suite.addTest(TestBiClusterCodeBase('test_convert_dict_to_2D_numpy_array'))
     unit_test_suite.addTest(TestBiClusterCodeBase('test_compute_k_m_parallel'))
+    unit_test_suite.addTest(TestBiClusterCodeBase('test_compute_interval_pval_parallel'))
+    unit_test_suite.addTest(TestBiClusterCodeBase('test_generate_gene_blocks'))
     
     runner = unittest.TextTestRunner()
     runner.run(unit_test_suite)
