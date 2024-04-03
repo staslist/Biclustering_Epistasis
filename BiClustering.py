@@ -109,7 +109,8 @@ def summation_func(n:int):
         
     return result
 
-def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str):
+def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1:str, chrom2:str,
+                            pval_cutoff:float):
     interval_length = total_markers//num_cpus
     
     i_start = 0 
@@ -129,21 +130,30 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str):
         i_s = str(i_interval[0])
         i_e = str(i_interval[1])
         tot_marks = str(total_markers)
-        fname_out_py = out_dir + 'BiClustering_Launcher' + i_s + '_' + i_e + '.py'
+        fname_out_py = out_dir + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 
+        fname_out_py += '_' + i_s + '_' + i_e + '.py'
         with open(fname_out_py, 'w') as writer:
             writer.write('from BiClustering import *\n')
+            writer.write('import sys\n')
             writer.write('if __name__ == "__main__":\n')
             writer.write('\tassert sys.version_info.major == 3\n')
             writer.write('\tassert sys.version_info.minor >= 7\n')
-            writer.write("\tmarker_file = '/gpfs/group/home/slistopad/BiClustering/biclustering_pub_marker_pairs.csv'\n")
-            writer.write('\tN,n,inter_matrix,up_tri = initialize_matrices(' + tot_marks + ', marker_file)\n')
+            writer.write('\tindir = /gpfs/group/home/slistopad/BiClustering/\n')
+            writer.write("\tmarker_file1 = indir + 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
+            writer.write("\tmarker_file2 = indir + 'epiAA_aa2_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
+            writer.write("\tmarker_file3 = indir + 'epiAD_ad_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
+            writer.write("\tmarker_file4 = indir + 'epiDD_dd_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
+            writer.write('\tmarker_files = [marker_file1, marker_file2, marker_file3, marker_file4]\n')
+            writer.write("\tbim_file = indir + 'NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.bim'\n")
+            writer.write("\tchrom1,chrom2 = '" + chrom1 + "','" + chrom2 + "'\n")
+            writer.write('\tN,n,inter_matrix,up_tri = initialize_matrices2(bim_file,marker_files, chrom1, chrom2, ' + str(pval_cutoff) + '))\n')
             writer.write("\tout_dir = '/gpfs/group/home/slistopad/BiClustering/'\n")
             writer.write('\ti_start, i_end = '+i_s+', '+i_e+'\n')
-            writer.write('\tkm_results = compute_k_m_parallel('+ tot_marks + ',60, inter_matrix, up_tri, i_start, i_end, N, n)\n')
-            writer.write('\tcompute_interval_pval_parallel(km_results, N, n, i_start, i_end, 60, out_dir)\n')
+            writer.write('\tkm_results = compute_k_m_parallel(60, inter_matrix, up_tri, i_start, i_end, N, n)\n')
+            writer.write('\tcompute_interval_pval_parallel(km_results, N, n, i_start, i_end, 60, out_dir, chrom1=chrom1, chrom2=chrom2)\n')
             
             if(counter == 0):
-                writer.write('\tpval_results = []\n')
+                writer.write('\tpval_results = dict()\n')
                 writer.write('\ti_intervals = [')
                 counter_inner = 0
                 for i_inter in i_intervals:
@@ -154,23 +164,23 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str):
                     else:
                         writer.write(']\n')
                 writer.write('\tfor i_pair in i_intervals:\n')
-                writer.write("\t\tfilename = out_dir + 'pval_results_' + str(i_pair[0]) + '_' + str(i_pair[1]) + '.csv'\n")
+                writer.write("\t\tfilename = out_dir + 'chr" + chrom1 + "_chr" + chrom2 + "_pval_results_' + str(i_pair[0]) + '_' + str(i_pair[1]) + '.csv'\n")
                 writer.write('\t\twith open(filename) as csv_file:\n')
                 writer.write("\t\t\tcsv_reader = csv.reader(csv_file, delimiter=',')\n")
                 writer.write("\t\t\tfor row in csv_reader:\n")
-                writer.write("\t\t\t\tpval_results[(row[0],row[1],row[2],row[3])] = row[6]\n")
+                writer.write("\t\t\t\tpval_results[(int(row[0]),int(row[1]),int(row[2]),int(row[3]))] = float(row[6])\n")
                         
                 writer.write("\ts_inter_pairs = sorted(pval_results.items(), key = lambda x: abs(x[1]), reverse = False)\n")            
                 writer.write("\ttrimmed_inter_pairs = trim_intervals(s_inter_pairs)\n")
-                writer.write("\tfilename = out_dir + 'biclustering_results.txt'\n")
+                writer.write("\tfilename = out_dir + 'biclustering_results_chr" + chrom1 + "_chr" + chrom2 + ".txt'\n")
                 writer.write("\twith open(filename, 'w') as writer:\n")
                 writer.write("\t\tfor inter_pair in trimmed_inter_pairs:\n")
-                writer.write("\t\t\twriter.write(str(inter_pair[0][0])+','+str(inter_pair[0][1])+','+str(inter_pair[0][2])+','+str(inter_pair[0][3])+','+str(inter_pair[1]))\n")
+                writer.write("\t\t\twriter.write(str(inter_pair[0][0])+','+str(inter_pair[0][1])+','+str(inter_pair[0][2])+','+str(inter_pair[0][3])+','+str(inter_pair[1]) + '\\n')\n")
         
-        fname_out_sh = out_dir + 'BiClustering_Launcher' + i_s + '_' + i_e + '.sh'
+        fname_out_sh = out_dir + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_' + i_s + '_' + i_e + '.sh'
         with open(fname_out_sh, 'w') as writer:
             writer.write("#!/bin/sh\n")
-            writer.write("#SBATCH --job-name=SL_BiClustering_Launcher" + i_s + "_" + i_e + "\n")
+            writer.write("#SBATCH --job-name=SL_BiClustering_Launcher_chr" + chrom1 + '_chr' + chrom2 + '_' + i_s + "_" + i_e + "\n")
             writer.write("#SBATCH --nodes=1\n")
             writer.write("#SBATCH --ntasks=1\n")
             writer.write("#SBATCH --cpus-per-task=1\n")
@@ -181,9 +191,104 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str):
             writer.write("module load use.own\n")
             writer.write("module load python/3.8.3\n")
             writer.write("export PYTHONPATH=/gpfs/home/slistopad/.local/lib/python3.8/site-packages:$PYTHONPATH\n")
-            writer.write("python3 " + 'BiClustering_Launcher' + i_s + '_' + i_e + '.py')
+            writer.write("python3 " + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_' + i_s + '_' + i_e + '.py')
         counter += 1
-         
+    
+  
+def initialize_matrices2(bim_file:str, interaction_files:list, chrom1:str, chrom2:str, 
+                         pval_cutoff:float):
+    # Assume that testing is always done using all relevant SNPs on one chromosome vs 
+    # all relevant SNPs on another chromosome. A chromosome can be also tested against itself. 
+    # The matrix size is number of SNPs on chromosome 1 vs number of SNPs on chromosome 2.
+    # Relevant SNPs means SNPs that were included in the epistasis analysis.
+    
+    # Bim file informs us the number of relevant SNPs on each chromosome, and which SNPs pair 
+    # a given (i,j) value in the matrix represents. 
+    # Interaction file informs us which SNP pairs were found to interact.
+    # Generally it is expected that the number of interactions is small. 
+    # Whenever the chromosomes are different, all SNP pairs are assumed to have been tested 
+    # for interaction.
+    # If chromsome is the same, the tested interaction matrix is an upper triangular matrix. 
+    
+    # Important assumption regarding bim file, for each chromosome all SNPs are ordered based 
+    # on their location, from beginning of chromosome to end of chromosome. 
+    
+    # The interaction file is assumed to be a REMMA .anno file. 
+    chrom1_snps = []
+    chrom2_snps = []
+    
+    with open(bim_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter='\t')
+        for row in csv_reader:
+            if(chrom1 == row[0]):
+                chrom1_snps.append(row[1])
+            if(chrom2 == row[0]):
+                chrom2_snps.append(row[1])
+                
+    interactions = dict()
+    for interaction_file in interaction_files:
+        with open(interaction_file) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=' ')
+            header = True
+            for row in csv_reader:
+                if(header):
+                    header = False
+                    continue
+                if(float(row[18]) < pval_cutoff):
+                    # If this entry already is recorded in interactions (presumably from another 
+                    # interaction file), then overwrite the p-value for the record only if the 
+                    # new p-value is smaller.
+                    if((row[2], row[9]) in interactions):
+                        if(float(row[18]) < interactions[(row[2], row[9])]):
+                           interactions[(row[2], row[9])] = float(row[18])
+                    elif((row[9], row[2]) in interactions):
+                        if(float(row[18]) < interactions[(row[9], row[2])]):
+                            interactions[(row[9], row[2])] = float(row[18])
+                    
+                    interactions[(row[2], row[9])] = float(row[18])
+        
+    upper_triangular = False
+    if(chrom1 == chrom2):
+        upper_triangular = True
+        
+    N = 0
+    n = 0
+    inter_matrix = dict()
+
+    total_markers1 = len(chrom1_snps)
+    total_markers2 = len(chrom2_snps)
+    
+    if(upper_triangular):
+        i = 0
+        while i < total_markers1:
+            N += i
+            i += 1
+    else:
+        N = total_markers1 * total_markers2
+    
+    i = 0
+    while i < total_markers1:
+        j = 0
+        while j < total_markers2:
+            if(upper_triangular):
+                if(i < j):
+                    j+=1
+                    continue
+            if((chrom1_snps[i], chrom2_snps[j]) in interactions or
+               (chrom2_snps[j], chrom1_snps[i]) in interactions):
+                #print(i,j)
+                inter_matrix[(i,j)] = 1
+                n += 1
+            else:
+                inter_matrix[(i,j)] = 0 
+                
+            j += 1
+            
+        i += 1
+                
+    return N, n, inter_matrix, upper_triangular
+    
+  
 def initialize_matrices(total_markers:int, marker_file:str, upper_triangular:bool = True):
     # Also, we assume that all values in the interaction matrices are 1s and 0s.
     
@@ -228,12 +333,27 @@ def initialize_matrices(total_markers:int, marker_file:str, upper_triangular:boo
     return N, n, inter_matrix, upper_triangular
 
 def check_overlap(i:int, j:int, a:int, b:int, i2:int, j2:int, a2:int, b2:int):
-    # Note if two matrices are identical we treat them as non-overlapping. 
-    # Note that to overlap one matrix's origin point must be INSIDE of another matrix (not on border).
+    # Note if two matrices are identical we return false. 
     if(i == i2 and j == j2 and a==a2 and b==b2):
         return False
-    else:
-        return ( ((i+a) > i2 > i) and ((j+b) > j2 > j) ) or ( ((i2+a2) > i > i2) and ((j2+b2) > j > j2) )
+    
+    assert(i >= 0 and j >= 0 and i2 >= 0 and j2 >= 0)
+    assert(a >= 1 and b>= 1 and a2 >= 1 and b2 >= 1)
+    
+    origin_test = ( ((i+a-1) >= i2 >= i) and ((j+b-1) >= j2 >= j) ) or ( ((i2+a2-1) >= i >= i2) and ((j2+b2-1) >= j >= j2) )
+    if(origin_test):
+        return True
+    bottom_left_test =  ( (i2 <= (i+a-1) <= (i2+a2-1)) and ((j2+b2-1) >= j >= j2) ) or ( (i <= (i2+a2-1) <= (i+a -1)) and ((j+b-1) >= j2 >= j) )
+    if(bottom_left_test):
+        return True
+    bottom_right_test = ( (i2 <= (i+a-1) <= (i2+a2-1)) and ((j2+b2-1) >= (j+b-1) >= j2) ) or (  (i <= (i2+a2-1) <= (i+a-1)) and ((j+b-1) >= (j2+b2-1) >= j)  )
+    if(bottom_right_test):
+        return True
+    upper_right_test = ( ((i+a-1) >= i2 >= i) and ((j2+b2-1) >= (j+b-1) >= j2) ) or ( ((i2+a2-1) >= i >= i2) and ((j+b-1) >= (j2+b2-1) >= j) )
+    if(upper_right_test):
+        return True
+    
+    return False
 
 '''
 def comp(i:int, j:int, a:int, b:int, val:str, inter_matrix:dict, tested_inter_matrix:dict):
@@ -321,7 +441,7 @@ def comp_alt(i:int, j:int, a:int, b:int, inter_matrix:'np.array', upper_triangul
     
     return k_val, m_val
 
-def compute_k_m_parallel(total_markers:int, max_inter_length:int, inter_matrix:dict,
+def compute_k_m_parallel(max_inter_length:int, inter_matrix:dict,
                          upper_triangular:bool, i_start:int, i_end:int, N:int, n:int):
     
     # Our only knowledge about inter_matrix is that it consists of 1s and 0s 
@@ -333,6 +453,9 @@ def compute_k_m_parallel(total_markers:int, max_inter_length:int, inter_matrix:d
     
     # Convert inter_matrix and tested_inter_matrix into numpy arrays.
     inter_array = convert_dict_to_2D_numpy_array(inter_matrix)
+    dimensions = inter_array.shape
+    total_markers1 = dimensions[0]
+    total_markers2 = dimensions[1]
     
     i = i_start
     j = 0
@@ -348,7 +471,7 @@ def compute_k_m_parallel(total_markers:int, max_inter_length:int, inter_matrix:d
     while i < i_end:
         #skipped_comp_k = 0
         #computed_k = 0
-        while j < total_markers:
+        while j < total_markers2:
             # If we the biggest matrix at (i,j) has k = 0, then all of the matrices within it 
             # will also have k = 0. 
             k_is_zero = False
@@ -357,7 +480,7 @@ def compute_k_m_parallel(total_markers:int, max_inter_length:int, inter_matrix:d
             b_thresh = 0
             while a >= 1:
                 while b >= 1:
-                    if((i + a) <= total_markers and (j+b) <= total_markers):
+                    if((i + a) <= total_markers1 and (j+b) <= total_markers2):
                         if(k_is_zero and a <= a_thresh and b <= b_thresh):
                             #skipped_comp_k += 1
                             k,m = comp_alt(i,j,a,b, inter_array, upper_triangular, compute_k=False)
@@ -396,14 +519,18 @@ def compute_k_m_parallel(total_markers:int, max_inter_length:int, inter_matrix:d
 
 
 def compute_interval_pval_parallel(km_results:dict, N:int, n:int, i_start:int, i_end:int,
-                                   max_inter_length:int, out_dir:str):
+                                   max_inter_length:int, out_dir:str, chrom1:str = '-1',
+                                   chrom2:str = '-1'):
     # Assume that all k values are bigger than expected k-value of (m*n/N)
     
     computed_pvals = dict()
     #correction = 0.05 / ((N**2) * (max_inter_length**2) * 0.5)
     correction = 0.05/((N**2)*0.5)
-    
-    filename = out_dir + 'pval_results_' + str(i_start) + '_' + str(i_end) + '.csv'
+    if(chrom1 == '-1' or chrom2 == '-1'):
+        filename = out_dir + 'pval_results_' + str(i_start) + '_' + str(i_end) + '.csv'
+    else:
+        filename = out_dir + 'chr' + chrom1 + '_chr' + chrom2 + '_pval_results_'
+        filename +=  str(i_start) + '_' + str(i_end) + '.csv'
     with open(filename, 'w') as writer:
     
         pval_results = dict()
@@ -427,7 +554,7 @@ def compute_interval_pval_parallel(km_results:dict, N:int, n:int, i_start:int, i
                 #     k += 1
                 
                 if(pval_results[key] < correction):
-                    print(pval_results[key])
+                    #print(pval_results[key])
                     writer.write(str(key[0])+','+str(key[1])+','+str(key[2])+','+str(key[3])+',')
                     writer.write(str(val[0]) + ',' + str(m) + ',' + str(pval_results[key]) + '\n')
                 # We do not care about interval pairs that have unusually low 
@@ -449,11 +576,12 @@ def trim_intervals(sorted_intervals:list):
     # Now go through interval pairs starting from most significant, and remove all overlapping 
     # intervals for the current interval
     outer_count = 0
-    indeces_to_delete = []
+    indeces_to_delete = set()
     for tup in sorted_intervals:
         # Skip this interval pair if it is already marked for delition
         if(outer_count in indeces_to_delete):
             outer_count += 1
+            #print('SKIPPED!')
             continue
         inner_count = 0
         curr_tup = tup
@@ -462,18 +590,23 @@ def trim_intervals(sorted_intervals:list):
         for tup in sorted_intervals:
             if(inner_count in indeces_to_delete):
                 inner_count += 1
+                #print('SKIPPED!')
                 continue
             i2,j2,a2,b2 = tup[0][0],tup[0][1],tup[0][2],tup[0][3]
             pval_inner = tup[1]
+            #print(i,j,a,b)
+            #print(i2,j2,a2,b2)
             if(check_overlap(i,j,a,b,i2,j2,a2,b2)):
-                if(pval_inner < pval_outer):
-                    indeces_to_delete.append(outer_count)
+                if(pval_inner <= pval_outer):
+                    indeces_to_delete.add(outer_count)
                 else:
-                    indeces_to_delete.append(inner_count)
+                    indeces_to_delete.add(inner_count)
                     
             inner_count += 1
             
         outer_count += 1
+        
+    #print(indeces_to_delete)
             
     culled_inter_pairs = []
     i = 0
@@ -523,13 +656,19 @@ class TestBiClusterCodeBase(unittest.TestCase):
         
     
     def test_check_overlap(self):
-        self.assertFalse(check_overlap(0,0,2,2,0,0,2,2))
+        # Simple Cases
+        self.assertTrue(check_overlap(166,621,10,40,167,620,9,42))
+        self.assertTrue(check_overlap(0,491,36,11,0,491,35,11))
+        self.assertTrue(check_overlap(10,10,5,5,5,12,8,5))
         self.assertTrue(check_overlap(0,0,2,2,1,1,2,2))
+        self.assertTrue(check_overlap(2,2,3,6,1,1,3,3))
+        self.assertFalse(check_overlap(0,0,2,2,3,2,1,1))
+        self.assertFalse(check_overlap(0,0,10,10,40,40,2,2))
+        
+        # Challenging/Border Cases
+        self.assertFalse(check_overlap(0,0,2,2,0,0,2,2))
         self.assertFalse(check_overlap(0,0,2,2,1,2,1,1))
         self.assertFalse(check_overlap(0,0,2,2,2,2,1,1))
-        self.assertFalse(check_overlap(0,0,2,2,3,2,1,1))
-        
-        self.assertTrue(check_overlap(2,2,3,6,1,1,3,3))
         self.assertFalse(check_overlap(2,2,3,6,1,1,1,3))
     
     def test_initialize_matrices(self):
@@ -575,7 +714,91 @@ class TestBiClusterCodeBase(unittest.TestCase):
                 self.assertEqual(inter_matrix[(i,j)], inter_matrix_exp[(i,j)])
                 j += 1
             i += 1  
-     
+            
+    def test_initialize_matrices2(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
+        bim_file = indir + 'Test_Data.bim'
+        inter_file = indir + 'Test_Interaction.anno'
+        chrom1 = '1'
+        chrom2 = '1'
+        
+        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
+        self.assertEqual(N, 435)
+        self.assertEqual(n, 1)
+        self.assertTrue(upper_tri)
+        
+        for k,v in inter_matrix.items():
+            if(k == (19,12)):
+                self.assertEqual(v, 1)
+            else:
+                self.assertEqual(v, 0)
+                
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
+        bim_file = indir + 'Test_Data.bim'
+        inter_file = indir + 'Test_Interaction.anno'
+        chrom1 = '2'
+        chrom2 = '3'
+        
+        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
+        
+        self.assertEqual(N, 900)
+        self.assertEqual(n, 5)
+        self.assertFalse(upper_tri)
+        for k,v in inter_matrix.items():
+            if(k in [(1,0), (8,11), (10,11), (12,14), (14,14)]):
+                self.assertEqual(v, 1)
+            else:
+                self.assertEqual(v, 0)
+                
+        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-6)
+        
+        self.assertEqual(N, 900)
+        self.assertEqual(n, 1)
+        self.assertFalse(upper_tri)
+        for k,v in inter_matrix.items():
+            if(k in [(1,0)]):
+                self.assertEqual(v, 1)
+            else:
+                self.assertEqual(v, 0)
+                
+        chrom1 = '3'
+        chrom2 = '2'
+        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
+        
+        self.assertEqual(N, 900)
+        self.assertEqual(n, 5)
+        self.assertFalse(upper_tri)
+        for k,v in inter_matrix.items():
+            if(k in [(0,1), (11,8), (11,10), (14,12), (14,14)]):
+                self.assertEqual(v, 1)
+            else:
+                self.assertEqual(v, 0)
+                
+        chrom1 = '2'
+        chrom2 = '3'
+        inter_file2 = indir + 'Test_Interaction2.anno'
+        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file, inter_file2], chrom1, chrom2, 1e-5)
+        self.assertEqual(N, 900)
+        self.assertEqual(n, 6)
+        self.assertFalse(upper_tri)
+        for k,v in inter_matrix.items():
+            if(k in [(1,0), (8,11), (10,11), (12,14), (14,14), (27, 25)]):
+                self.assertEqual(v, 1)
+            else:
+                self.assertEqual(v, 0)
+                
+                
+        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file, inter_file2], chrom1, chrom2, 1e-8)
+        self.assertEqual(N, 900)
+        self.assertEqual(n, 2)
+        self.assertFalse(upper_tri)
+        for k,v in inter_matrix.items():
+            if(k in [(8,11), (27, 25)]):
+                self.assertEqual(v, 1)
+            else:
+                self.assertEqual(v, 0)
+        
+        
     def test_comp_alt(self):
         inter_matrix = dict()
         i, j = 0, 0
@@ -650,7 +873,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         
         # Note, technically, the last parameter should be 3, but we enter 0 
         # to force all k,m pairs to be written.
-        km_results = compute_k_m_parallel(10, 4, inter_matrix, True, 0, 9, 45, 0)
+        km_results = compute_k_m_parallel(4, inter_matrix, True, 0, 9, 45, 0)
         
         self.assertEqual(km_results[(0,5,4,4)], (1,16))
         self.assertEqual(km_results[(0,8,3,1)], (1,3))
@@ -697,7 +920,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         
         # Note, technically, the last parameter should be 1, but we enter 0 
         # to force all k,m pairs to be written.
-        km_results = compute_k_m_parallel(10, 4, inter_matrix, True, 0, 9, 45, 0)
+        km_results = compute_k_m_parallel(4, inter_matrix, True, 0, 9, 45, 0)
         self.assertEqual(len(km_results), 63)
       
     def test_compute_interval_pval_parallel(self):
@@ -716,7 +939,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         
         # Note, technically, the last parameter should be 3, but we enter 0 
         # to force all k,m pairs to be written.
-        km_results = compute_k_m_parallel(10, 4, inter_matrix, True, 0, 9, 45, 0)
+        km_results = compute_k_m_parallel(4, inter_matrix, True, 0, 9, 45, 0)
         out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Output/'
         pval_results = compute_interval_pval_parallel(km_results, 45, 3, 0, 9, 4, out_dir)
         #print(pval_results)
@@ -753,6 +976,29 @@ class TestBiClusterCodeBase(unittest.TestCase):
         self.assertEqual(pval_results[(5,8,1,2)], 0.003030303030303028)
         self.assertEqual(pval_results[(5,8,2,1)], 0.13030303030303028)
         
+        
+    def test_trim_intervals(self):
+        in_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
+        filename = in_dir + 'pval_results_0_1.csv'
+        pval_results = dict()
+        with open(filename) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            for row in csv_reader:
+                pval_results[(int(row[0]),int(row[1]),int(row[2]),int(row[3]))] = float(row[6])
+        s_inter_pairs = sorted(pval_results.items(), key = lambda x: abs(x[1]), reverse = False)
+        #print(len(s_inter_pairs))
+        trimmed_inter_pairs = trim_intervals(s_inter_pairs)
+        
+        #print(len(trimmed_inter_pairs))
+        #print(trimmed_inter_pairs)
+        expected_trimmed_inter_pairs = [((0, 816, 48, 8), 2.5317372178516744e-24),
+                                        ((0, 999, 35, 3), 8.785313396735072e-16),
+                                        ((0, 494, 35, 8), 3.520342278584121e-15)]
+        
+        i = 0
+        for inter_pair in trimmed_inter_pairs:
+            self.assertEqual(inter_pair, expected_trimmed_inter_pairs[i])
+            i += 1
      
     def test_convert_dict_to_2D_numpy_array(self):
         tested_inter_matrix = dict()
@@ -782,6 +1028,8 @@ def test_suite():
     unit_test_suite.addTest(TestBiClusterCodeBase('test_compute_k_m_parallel'))
     unit_test_suite.addTest(TestBiClusterCodeBase('test_compute_interval_pval_parallel'))
     unit_test_suite.addTest(TestBiClusterCodeBase('test_generate_gene_blocks'))
+    unit_test_suite.addTest(TestBiClusterCodeBase('test_trim_intervals'))
+    unit_test_suite.addTest(TestBiClusterCodeBase('test_initialize_matrices2'))
     
     runner = unittest.TextTestRunner()
     runner.run(unit_test_suite)
