@@ -138,7 +138,7 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1
             writer.write('if __name__ == "__main__":\n')
             writer.write('\tassert sys.version_info.major == 3\n')
             writer.write('\tassert sys.version_info.minor >= 7\n')
-            writer.write('\tindir = /gpfs/group/home/slistopad/BiClustering/\n')
+            writer.write("\tindir = '/gpfs/group/home/slistopad/BiClustering/'\n")
             writer.write("\tmarker_file1 = indir + 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
             writer.write("\tmarker_file2 = indir + 'epiAA_aa2_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
             writer.write("\tmarker_file3 = indir + 'epiAD_ad_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
@@ -146,7 +146,7 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1
             writer.write('\tmarker_files = [marker_file1, marker_file2, marker_file3, marker_file4]\n')
             writer.write("\tbim_file = indir + 'NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.bim'\n")
             writer.write("\tchrom1,chrom2 = '" + chrom1 + "','" + chrom2 + "'\n")
-            writer.write('\tN,n,inter_matrix,up_tri = initialize_matrices2(bim_file,marker_files, chrom1, chrom2, ' + str(pval_cutoff) + '))\n')
+            writer.write('\tN,n,inter_matrix,up_tri = initialize_matrices2(bim_file,marker_files, chrom1, chrom2, ' + str(pval_cutoff) + ')\n')
             writer.write("\tout_dir = '/gpfs/group/home/slistopad/BiClustering/'\n")
             writer.write('\ti_start, i_end = '+i_s+', '+i_e+'\n')
             writer.write('\tkm_results = compute_k_m_parallel(60, inter_matrix, up_tri, i_start, i_end, N, n)\n')
@@ -194,6 +194,82 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1
             writer.write("python3 " + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_' + i_s + '_' + i_e + '.py')
         counter += 1
     
+def parse_biclustering_results(biclustering_file:str, bim_file:str, chrom1:str, chrom2:str, 
+                               out_dir:str):
+    chrom1_snps, chrom2_snps = parse_plink_bim_file(bim_file, chrom1, chrom2)
+    
+    chrom1_ranges, chrom2_ranges = [], []
+    p_values = []
+    
+    with open(biclustering_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            range1 = (int(row[0]), int(row[0]) + int(row[2]))
+            chrom1_ranges.append(range1)
+            range2 = (int(row[1]), int(row[1]) + int(row[3]))
+            chrom2_ranges.append(range2)
+            p_values.append(row[4])
+            
+    filename = out_dir + 'biclustering_results_chr' + chrom1 + '_chr' + chrom2 + '_annotated.txt'
+    with open(filename, 'w') as writer:
+        i = 0
+        num_interval_pairs = len(chrom1_ranges)
+        while i < num_interval_pairs:
+            #print(chrom1_ranges[i][0])
+            #print(chrom1_ranges[i][1])
+            #print(chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]])
+            writer.write(str(chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]) + '\t')
+            writer.write(str(chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]) + '\t')
+            writer.write(p_values[i] + '\n')
+            i += 1
+    
+    
+def parse_remma_interaction_data(interaction_files:list, pval_cutoff:float, chrom1:str, chrom2:str):
+    #print(pval_cutoff)
+    #print(chrom1)
+    #print(chrom2)
+    
+    interactions = dict()
+    for interaction_file in interaction_files:
+        with open(interaction_file) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=' ')
+            header = True
+            for row in csv_reader:
+                if(header):
+                    header = False
+                    continue
+                # Check if entry passes p-value cutoff and matches target chromosomes.
+                if(float(row[18]) < pval_cutoff and ((row[1] == chrom1 and row[8] == chrom2) or 
+                   (row[8] == chrom1 and row[1] == chrom2))):
+                    
+                    # If this entry already is recorded in interactions (presumably from another 
+                    # interaction file), then overwrite the p-value for the record only if the 
+                    # new p-value is smaller.
+                    if((row[2], row[9]) in interactions):
+                        if(float(row[18]) < interactions[(row[2], row[9])]):
+                            interactions[(row[2], row[9])] = float(row[18])
+                    elif((row[9], row[2]) in interactions):
+                        if(float(row[18]) < interactions[(row[9], row[2])]):
+                            interactions[(row[9], row[2])] = float(row[18])
+                    else:
+                        interactions[(row[2], row[9])] = float(row[18])
+            
+    return interactions
+
+def parse_plink_bim_file(bim_file:str, chrom1:str, chrom2:str):
+    chrom1_snps = []
+    chrom2_snps = []
+    
+    with open(bim_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter='\t')
+        for row in csv_reader:
+            if(chrom1 == row[0]):
+                chrom1_snps.append(row[1])
+            if(chrom2 == row[0]):
+                chrom2_snps.append(row[1])
+                
+    return chrom1_snps, chrom2_snps
+    
   
 def initialize_matrices2(bim_file:str, interaction_files:list, chrom1:str, chrom2:str, 
                          pval_cutoff:float):
@@ -214,39 +290,13 @@ def initialize_matrices2(bim_file:str, interaction_files:list, chrom1:str, chrom
     # on their location, from beginning of chromosome to end of chromosome. 
     
     # The interaction file is assumed to be a REMMA .anno file. 
-    chrom1_snps = []
-    chrom2_snps = []
     
-    with open(bim_file) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter='\t')
-        for row in csv_reader:
-            if(chrom1 == row[0]):
-                chrom1_snps.append(row[1])
-            if(chrom2 == row[0]):
-                chrom2_snps.append(row[1])
+    chrom1_snps, chrom2_snps = parse_plink_bim_file(bim_file, chrom1, chrom2)
                 
-    interactions = dict()
-    for interaction_file in interaction_files:
-        with open(interaction_file) as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=' ')
-            header = True
-            for row in csv_reader:
-                if(header):
-                    header = False
-                    continue
-                if(float(row[18]) < pval_cutoff):
-                    # If this entry already is recorded in interactions (presumably from another 
-                    # interaction file), then overwrite the p-value for the record only if the 
-                    # new p-value is smaller.
-                    if((row[2], row[9]) in interactions):
-                        if(float(row[18]) < interactions[(row[2], row[9])]):
-                           interactions[(row[2], row[9])] = float(row[18])
-                    elif((row[9], row[2]) in interactions):
-                        if(float(row[18]) < interactions[(row[9], row[2])]):
-                            interactions[(row[9], row[2])] = float(row[18])
-                    
-                    interactions[(row[2], row[9])] = float(row[18])
+    interactions = parse_remma_interaction_data(interaction_files, pval_cutoff, chrom1, chrom2)
         
+    #print(interactions)    
+    
     upper_triangular = False
     if(chrom1 == chrom2):
         upper_triangular = True
