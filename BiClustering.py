@@ -177,23 +177,29 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1
                 writer.write("\t\tfor inter_pair in trimmed_inter_pairs:\n")
                 writer.write("\t\t\twriter.write(str(inter_pair[0][0])+','+str(inter_pair[0][1])+','+str(inter_pair[0][2])+','+str(inter_pair[0][3])+','+str(inter_pair[1]) + '\\n')\n")
         
-        fname_out_sh = out_dir + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_' + i_s + '_' + i_e + '.sh'
-        with open(fname_out_sh, 'w') as writer:
-            writer.write("#!/bin/sh\n")
-            writer.write("#SBATCH --job-name=SL_BiClustering_Launcher_chr" + chrom1 + '_chr' + chrom2 + '_' + i_s + "_" + i_e + "\n")
-            writer.write("#SBATCH --nodes=1\n")
-            writer.write("#SBATCH --ntasks=1\n")
-            writer.write("#SBATCH --cpus-per-task=1\n")
-            writer.write("#SBATCH --mem=32gb\n")
-            writer.write("#SBATCH --time=240:00:00\n")
-            writer.write("#SBATCH --partition=shared\n\n")
-            writer.write("cd $SLURM_SUBMIT_DIR\n")
-            writer.write("module load use.own\n")
-            writer.write("module load python/3.8.3\n")
-            writer.write("export PYTHONPATH=/gpfs/home/slistopad/.local/lib/python3.8/site-packages:$PYTHONPATH\n")
-            writer.write("python3 " + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_' + i_s + '_' + i_e + '.py')
         counter += 1
-    
+        
+    fname_out_sh = out_dir + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '.sh'
+    with open(fname_out_sh, 'w') as writer:
+        writer.write("#!/bin/sh\n")
+        writer.write("#SBATCH --job-name=SL_BiClustering_Launcher_chr" + chrom1 + '_chr' + chrom2 + "\n")
+        writer.write("#SBATCH --nodes=1\n")
+        writer.write("#SBATCH --ntasks=1\n")
+        writer.write("#SBATCH --cpus-per-task=1\n")
+        writer.write("#SBATCH --mem=32gb\n")
+        writer.write("#SBATCH --time=240:00:00\n")
+        writer.write("#SBATCH --partition=shared\n\n")
+        writer.write("cd $SLURM_SUBMIT_DIR\n")
+        writer.write("module load use.own\n")
+        writer.write("module load python/3.8.3\n")
+        writer.write("export PYTHONPATH=/gpfs/home/slistopad/.local/lib/python3.8/site-packages:$PYTHONPATH\n")
+        i = len(i_intervals) - 1
+        while i >= 0:
+            i_s = str(i_intervals[i][0])
+            i_e = str(i_intervals[i][1])
+            writer.write("python3 " + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_' + i_s + '_' + i_e + '.py' + '\n')
+            i -= 1
+            
 def parse_biclustering_results(biclustering_file:str, bim_file:str, chrom1:str, chrom2:str, 
                                out_dir:str):
     chrom1_snps, chrom2_snps = parse_plink_bim_file(bim_file, chrom1, chrom2)
@@ -321,7 +327,8 @@ def initialize_matrices2(bim_file:str, interaction_files:list, chrom1:str, chrom
         j = 0
         while j < total_markers2:
             if(upper_triangular):
-                if(i < j):
+                if(i >= j):
+                    inter_matrix[(i,j)] = 0 
                     j+=1
                     continue
             if((chrom1_snps[i], chrom2_snps[j]) in interactions or
@@ -778,7 +785,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         self.assertTrue(upper_tri)
         
         for k,v in inter_matrix.items():
-            if(k == (19,12)):
+            if(k == (12,19)):
                 self.assertEqual(v, 1)
             else:
                 self.assertEqual(v, 0)
