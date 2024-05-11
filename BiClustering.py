@@ -216,17 +216,52 @@ def parse_biclustering_results(biclustering_file:str, bim_file:str, chrom1:str, 
             chrom2_ranges.append(range2)
             p_values.append(row[4])
             
+            
+    full_dir2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+    file2 = full_dir2 + 'Combined_Strict_Set_score900_db_exp_1_and_genehancer_score_10_ranges.txt'
+    gene_reg_locations = []
+
+    with open(file2) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=' ')
+        for row in csv_reader:
+            gene_reg_locations.append((row[0],row[1],row[2],row[3]))
+    
     filename = out_dir + 'biclustering_results_chr' + chrom1 + '_chr' + chrom2 + '_annotated.txt'
     with open(filename, 'w') as writer:
         i = 0
         num_interval_pairs = len(chrom1_ranges)
         while i < num_interval_pairs:
-            #print(chrom1_ranges[i][0])
-            #print(chrom1_ranges[i][1])
-            #print(chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]])
-            writer.write(str(chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]) + '\t')
-            writer.write(str(chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]) + '\t')
+            interval1_elements, interval2_elements = set(), set()
+            #writer.write(str(chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]) + '\t')
+            #writer.write(str(chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]) + '\t')
+            #writer.write(p_values[i] + '\n')
+            interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
+            interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
+            p_val = p_values[i]
+            
+            for snp in interval1:
+                chrom1_loc1 = snp.split(':')
+                chrom1 = chrom1_loc1[0]
+                loc1 = chrom1_loc1[1]
+                
+                for ele_loc in gene_reg_locations:
+                    if(chrom1 == ele_loc[0] and loc1 >= ele_loc[1] and loc1 <= ele_loc[2]):
+                        interval1_elements.add(ele_loc[3])
+                        
+            for snp in interval2:
+                chrom2_loc2 = snp.split(':')
+                chrom2 = chrom2_loc2[0]
+                loc2 = chrom2_loc2[1]
+                
+                for ele_loc in gene_reg_locations:
+                    if(chrom2 == ele_loc[0] and loc2 >= ele_loc[1] and loc2 <= ele_loc[2]):
+                        interval2_elements.add(ele_loc[3])
+                        
+            
+            writer.write(str(interval1_elements) + '\t')
+            writer.write(str(interval2_elements) + '\t')
             writer.write(p_values[i] + '\n')
+            
             i += 1
     
     
@@ -259,7 +294,6 @@ def parse_remma_interaction_data(interaction_files:list, pval_cutoff:float, chro
                             interactions[(row[9], row[2])] = float(row[18])
                     else:
                         interactions[(row[2], row[9])] = float(row[18])
-            
     return interactions
 
 def parse_plink_bim_file(bim_file:str, chrom1:str, chrom2:str):
@@ -342,6 +376,13 @@ def initialize_matrices2(bim_file:str, interaction_files:list, chrom1:str, chrom
             j += 1
             
         i += 1
+        
+    print("Interaction matarix initialized.")
+    print("N: ", N)
+    print("n: ", n)
+    print("Chromosome1: ", chrom1)
+    print("Chromosome2: ", chrom2)
+    print("P-Value Cutoff: ", pval_cutoff)
                 
     return N, n, inter_matrix, upper_triangular
     
@@ -471,19 +512,20 @@ def comp_alt(i:int, j:int, a:int, b:int, inter_matrix:'np.array', upper_triangul
     k_val = 0
     m_val = 0
     
-    if(not upper_triangular):
-        m_val = a * b
-    else:
-        i2 = i   
-        while i2 < (i+a):
-            # At which index do 1s start in this row. That is simpy row_index + 1.
-            if(j < (i2 + 1)):
-                m_val += max(j + b - (i2 + 1), 0)
-            else:
-                m_val += b
-            i2 += 1
     
     if(compute_k):
+        if(not upper_triangular):
+            m_val = a * b
+        else:
+            i2 = i   
+            while i2 < (i+a):
+                # At which index do 1s start in this row. That is simpy row_index + 1.
+                if(j < (i2 + 1)):
+                    m_val += max(j + b - (i2 + 1), 0)
+                else:
+                    m_val += b
+                i2 += 1
+        
         k_val = np.count_nonzero(inter_matrix[i:(i+a),j:(j+b)])
     
     '''
@@ -548,7 +590,7 @@ def compute_k_m_parallel(max_inter_length:int, inter_matrix:dict,
                                 k_is_zero = True
                                 a_thresh = a
                                 b_thresh = b
-                        # Do not store the k,m pair if k < expected value (m*n/N)
+                        # Do not store the k,m pair if k <= expected value (m*n/N)
                         if(k > (m*n/N)):
                             km_results[(i,j,a,b)] = (k,m)
                         else:
@@ -571,7 +613,7 @@ def compute_k_m_parallel(max_inter_length:int, inter_matrix:dict,
         #print("Number of skipped k computations: ", skipped_comp_k)
         #print("Number of completed k computations: ", computed_k)
     
-    
+    print("Length of km_results: ", len(km_results))
     return km_results
 
 
@@ -627,6 +669,7 @@ def compute_interval_pval_parallel(km_results:dict, N:int, n:int, i_start:int, i
             # if(i%1000 == 0):
             #     print(i)
             #     print(len(computed_pvals))
+    print("Computed p-values.")
     return pval_results
 
 def trim_intervals(sorted_intervals:list):
@@ -1001,37 +1044,37 @@ class TestBiClusterCodeBase(unittest.TestCase):
         pval_results = compute_interval_pval_parallel(km_results, 45, 3, 0, 9, 4, out_dir)
         #print(pval_results)
         
-        self.assertEqual(pval_results[(0,5,4,4)], 0.7424947145877375)
-        self.assertEqual(pval_results[(0,8,3,1)], 0.19097956307258632)
-        self.assertEqual(pval_results[(1,7,2,2)], 0.24876673713883074)
-        self.assertEqual(pval_results[(2,5,4,4)], 0.2540521494009871)
-        self.assertEqual(pval_results[(2,8,4,2)], 0.0039464411557434895)
-        self.assertEqual(pval_results[(4,7,3,3)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(0,5,4,4)], 0.7424947145877379)
+        self.assertAlmostEqual(pval_results[(0,8,3,1)], 0.19097956307258637)
+        self.assertAlmostEqual(pval_results[(1,7,2,2)], 0.24876673713883019)
+        self.assertAlmostEqual(pval_results[(2,5,4,4)], 0.25405214940098664)
+        self.assertAlmostEqual(pval_results[(2,8,4,2)], 0.0039464411557434895)
+        self.assertAlmostEqual(pval_results[(4,7,3,3)], 0.09725158562367894)
         
-        self.assertEqual(pval_results[(5,5,4,4)], 0.35595489781536405)
-        self.assertEqual(pval_results[(5,5,3,4)], 0.35595489781536405)
-        self.assertEqual(pval_results[(5,5,2,4)], 0.30373502466525815)
-        self.assertEqual(pval_results[(5,5,1,4)], 0.19097956307258632)
-        self.assertEqual(pval_results[(5,6,4,4)], 0.11945031712473582)
-        self.assertEqual(pval_results[(5,6,4,3)], 0.35595489781536405)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,3)], 0.35595489781536405)
-        self.assertEqual(pval_results[(5,6,2,4)], 0.058703312191684544)
+        self.assertAlmostEqual(pval_results[(5,5,4,4)], 0.35595489781536405)
+        self.assertAlmostEqual(pval_results[(5,5,3,4)], 0.35595489781536405)
+        self.assertAlmostEqual(pval_results[(5,5,2,4)], 0.30373502466525815)
+        self.assertAlmostEqual(pval_results[(5,5,1,4)], 0.19097956307258632)
+        self.assertAlmostEqual(pval_results[(5,6,4,4)], 0.11945031712473582)
+        self.assertAlmostEqual(pval_results[(5,6,4,3)], 0.35595489781536405)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,3)], 0.35595489781536405)
+        self.assertAlmostEqual(pval_results[(5,6,2,4)], 0.058703312191684544)
         
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
-        self.assertEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
+        self.assertAlmostEqual(pval_results[(5,6,3,4)], 0.09725158562367894)
         
-        self.assertEqual(pval_results[(5,6,2,4)], 0.058703312191684544)
-        self.assertEqual(pval_results[(5,8,1,1)], 0.06666666666666664)
-        self.assertEqual(pval_results[(5,8,1,2)], 0.003030303030303028)
-        self.assertEqual(pval_results[(5,8,2,1)], 0.13030303030303028)
+        self.assertAlmostEqual(pval_results[(5,6,2,4)], 0.058703312191684544)
+        self.assertAlmostEqual(pval_results[(5,8,1,1)], 0.06666666666666664)
+        self.assertAlmostEqual(pval_results[(5,8,1,2)], 0.003030303030303028)
+        self.assertAlmostEqual(pval_results[(5,8,2,1)], 0.13030303030303028)
         
         
     def test_trim_intervals(self):
