@@ -8,8 +8,11 @@ Created on Mon Feb 19 02:54:48 2024
 import csv
 import unittest
 import numpy as np
-import time
+import os
+#import time
 from scipy.stats import hypergeom
+from datetime import datetime
+from numba import jit
 
 # Bi-Clustering Algorithm Code
 
@@ -109,8 +112,8 @@ def summation_func(n:int):
         
     return result
 
-def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1:str, chrom2:str,
-                            pval_cutoff:float):
+def generate_multicpu_files(anno_files:list, bim_file:str, total_markers:int, num_cpus:int, 
+                            out_dir:str, chrom1:str, chrom2:str, pval_cutoff:float):
     interval_length = total_markers//num_cpus
     
     i_start = 0 
@@ -131,7 +134,7 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1
         i_e = str(i_interval[1])
         tot_marks = str(total_markers)
         fname_out_py = out_dir + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 
-        fname_out_py += '_' + i_s + '_' + i_e + '.py'
+        fname_out_py += '_' + str(counter) + '.py'
         with open(fname_out_py, 'w') as writer:
             writer.write('from BiClustering import *\n')
             writer.write('import sys\n')
@@ -139,12 +142,19 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1
             writer.write('\tassert sys.version_info.major == 3\n')
             writer.write('\tassert sys.version_info.minor >= 7\n')
             writer.write("\tindir = '/gpfs/group/home/slistopad/BiClustering/'\n")
-            writer.write("\tmarker_file1 = indir + 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
-            writer.write("\tmarker_file2 = indir + 'epiAA_aa2_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
-            writer.write("\tmarker_file3 = indir + 'epiAD_ad_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
-            writer.write("\tmarker_file4 = indir + 'epiDD_dd_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'\n")
-            writer.write('\tmarker_files = [marker_file1, marker_file2, marker_file3, marker_file4]\n')
-            writer.write("\tbim_file = indir + 'NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.bim'\n")
+            r = 1
+            for anno_file in anno_files:
+                writer.write("\tmarker_file" + str(r) + " = indir + '" + str(anno_file) + "'\n")
+                r += 1
+            r = 1
+            writer.write('\tmarker_files = [')
+            while r <= len(anno_files):
+                writer.write('marker_file' + str(r))
+                if(r != len(anno_files)):
+                    writer.write(',')
+                r += 1
+            writer.write(']\n')
+            writer.write("\tbim_file = indir + '" + str(bim_file) + "'\n")
             writer.write("\tchrom1,chrom2 = '" + chrom1 + "','" + chrom2 + "'\n")
             writer.write('\tN,n,inter_matrix,up_tri = initialize_matrices2(bim_file,marker_files, chrom1, chrom2, ' + str(pval_cutoff) + ')\n')
             writer.write("\tout_dir = '/gpfs/group/home/slistopad/BiClustering/'\n")
@@ -183,25 +193,124 @@ def generate_multicpu_files(total_markers:int, num_cpus:int, out_dir:str, chrom1
     with open(fname_out_sh, 'w') as writer:
         writer.write("#!/bin/sh\n")
         writer.write("#SBATCH --job-name=SL_BiClustering_Launcher_chr" + chrom1 + '_chr' + chrom2 + "\n")
-        writer.write("#SBATCH --nodes=1\n")
+        writer.write("#SBATCH --array=1-" + str(len(i_intervals)-1) + "\n")
         writer.write("#SBATCH --ntasks=1\n")
-        writer.write("#SBATCH --cpus-per-task=1\n")
-        writer.write("#SBATCH --mem=32gb\n")
+        writer.write("#SBATCH --mem=48gb\n")
         writer.write("#SBATCH --time=240:00:00\n")
         writer.write("#SBATCH --partition=shared\n\n")
         writer.write("cd $SLURM_SUBMIT_DIR\n")
         writer.write("module load use.own\n")
         writer.write("module load python/3.8.3\n")
         writer.write("export PYTHONPATH=/gpfs/home/slistopad/.local/lib/python3.8/site-packages:$PYTHONPATH\n")
-        i = len(i_intervals) - 1
-        while i >= 0:
-            i_s = str(i_intervals[i][0])
-            i_e = str(i_intervals[i][1])
-            writer.write("python3 " + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_' + i_s + '_' + i_e + '.py' + '\n')
-            i -= 1
+        writer.write("python3 " + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_${SLURM_ARRAY_TASK_ID}.py' + '\n')
+        writer.write("python3 " + 'BiClustering_Launcher_chr' + chrom1 + '_chr' + chrom2 + '_0.py' + '\n')
+          
+        
+def get_number_of_interacting_snps_in_interval(biclustering_file:str, bim_file:str, gene_location_file:str,
+                                               chrom1:str, chrom2:str, interaction_files:list, pval_cutoff:float):
+    interacting_pairs_per_interval = dict()
+    
+    chrom1_snps, chrom2_snps = parse_plink_bim_file(bim_file, chrom1, chrom2)
+    
+    chrom1_ranges, chrom2_ranges = [], []
+    
+    with open(biclustering_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            range1 = (int(row[0]), int(row[0]) + int(row[2]))
+            chrom1_ranges.append(range1)
+            range2 = (int(row[1]), int(row[1]) + int(row[3]))
+            chrom2_ranges.append(range2)
             
-def parse_biclustering_results(biclustering_file:str, bim_file:str, chrom1:str, chrom2:str, 
-                               out_dir:str):
+            
+    interactions = parse_remma_interaction_data(interaction_files, pval_cutoff, chrom1, chrom2)
+            
+    #print('goodbye')
+            
+    #print('chrom1_ranges: ', chrom1_ranges)
+    #print('chrom2_ranges: ', chrom2_ranges)
+    
+    gene_reg_locations = []
+
+    with open(gene_location_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=' ')
+        for row in csv_reader:
+            gene_reg_locations.append((row[0],row[1],row[2],row[3]))
+    
+    i = 0
+    num_interval_pairs = len(chrom1_ranges)
+    while i < num_interval_pairs:
+        interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
+        interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
+        #print(interval1)
+        #print(interval2)
+        
+        #print(interactions)
+        
+        for snp in interval1:
+            for snp2 in interval2:
+                if( (snp, snp2) in interactions or (snp2, snp) in interactions ):
+                    
+                    chrom1_loc1 = snp.split(':')
+                    chrom1 = chrom1_loc1[0]
+                    loc1 = chrom1_loc1[1]
+                    element1 = ''
+                    
+                    for ele_loc in gene_reg_locations:
+                        if(chrom1 == ele_loc[0] and int(loc1) >= int(ele_loc[1]) and int(loc1) <= int(ele_loc[2])):
+                            element1 += ele_loc[3] + ' '
+                    
+                    chrom2_loc2 = snp2.split(':')
+                    chrom2 = chrom2_loc2[0]
+                    loc2 = chrom2_loc2[1]
+                    element2 = ''
+                    
+                    for ele_loc in gene_reg_locations:
+                        if(chrom2 == ele_loc[0] and int(loc2) >= int(ele_loc[1]) and int(loc2) <= int(ele_loc[2])):
+                            element2 += ele_loc[3] + ' '
+                            
+                    if (element1, element2) not in interacting_pairs_per_interval:
+                        interacting_pairs_per_interval[(element1, element2)] = 1 
+                    else:
+                        interacting_pairs_per_interval[(element1, element2)] += 1
+        i += 1
+                    
+    return interacting_pairs_per_interval
+    
+def get_msigdb_enrichment(gene_pairs:set, out_dir:str):
+    #print(pairs)
+    pairs_map = dict()
+    fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Pathways/c2.all.v2023.2.Hs.symbols.gmt'
+    with open(fname) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter='\t')
+        for row in csv_reader:
+            pathway_name = row[0]
+            pathway_genes = row[2:]
+            for pair in gene_pairs:
+                if(pair[0] in pathway_genes and pair[1] in pathway_genes):
+                    try:
+                        pairs_map[pair].append(pathway_name)
+                    except KeyError:
+                        pairs_map[pair] = [pathway_name]
+                        
+    fname_out = out_dir + 'biclustering_results_msigdb_enrichment.txt'
+    with open(fname_out, 'w') as writer:
+        for k,v in pairs_map.items():
+            writer.write(str(k) + ' : ' + str(v) + '\n')
+        
+
+def parse_biclustering_results(biclustering_file:str, bim_file:str, gene_location_file:str,
+                               chrom1:str, chrom2:str, interaction_files:list, pval_cutoff:float,
+                               out_dir:str, single_file_output:bool = False):
+    # WARNING, The pval_cutoff should match the p-value cutoff used to conduc the biclustering analysis.
+    # Otherwise, the mapping of the interacting intervals to interacting genes will not make sense. 
+    
+    # Previously the intervals were mapped to all the genes/regulatory elements that at least partially 
+    # overlap with the interval. This is no longer the case.
+    # Currently, we first identify all the interacting snps within the intervals. 
+    # And then we identify all the genes/regulatory elements that those interacting snps belong to. 
+    # print(biclustering_file)
+    
     chrom1_snps, chrom2_snps = parse_plink_bim_file(bim_file, chrom1, chrom2)
     
     chrom1_ranges, chrom2_ranges = [], []
@@ -216,53 +325,132 @@ def parse_biclustering_results(biclustering_file:str, bim_file:str, chrom1:str, 
             chrom2_ranges.append(range2)
             p_values.append(row[4])
             
+    #print('goodbye')
             
-    full_dir2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
-    file2 = full_dir2 + 'Combined_Strict_Set_score900_db_exp_1_and_genehancer_score_10_ranges.txt'
     gene_reg_locations = []
 
-    with open(file2) as csv_file:
+    with open(gene_location_file) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=' ')
         for row in csv_reader:
             gene_reg_locations.append((row[0],row[1],row[2],row[3]))
+            
+    #print("gene_reg_locations: ", gene_reg_locations)
+            
+    #print('chrom1_ranges: ', chrom1_ranges)
+    #print('chrom2_ranges: ', chrom2_ranges)
     
-    filename = out_dir + 'biclustering_results_chr' + chrom1 + '_chr' + chrom2 + '_annotated.txt'
-    with open(filename, 'w') as writer:
-        i = 0
-        num_interval_pairs = len(chrom1_ranges)
-        while i < num_interval_pairs:
-            interval1_elements, interval2_elements = set(), set()
-            #writer.write(str(chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]) + '\t')
-            #writer.write(str(chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]) + '\t')
-            #writer.write(p_values[i] + '\n')
-            interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
-            interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
-            p_val = p_values[i]
-            
-            for snp in interval1:
-                chrom1_loc1 = snp.split(':')
-                chrom1 = chrom1_loc1[0]
-                loc1 = chrom1_loc1[1]
+    interactions = parse_remma_interaction_data(interaction_files, pval_cutoff, chrom1, chrom2)
+    
+    #print("Interactions: ", interactions)
+    
+    if(not single_file_output):
+        filename = out_dir + 'biclustering_results_chr' + chrom1 + '_chr' + chrom2 + '_annotated.txt'
+        with open(filename, 'w') as writer:
+            i = 0
+            num_interval_pairs = len(chrom1_ranges)
+            while i < num_interval_pairs:
+                gene_pairs = set()
+                interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
+                interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
+                p_val = p_values[i]
                 
-                for ele_loc in gene_reg_locations:
-                    if(chrom1 == ele_loc[0] and loc1 >= ele_loc[1] and loc1 <= ele_loc[2]):
-                        interval1_elements.add(ele_loc[3])
-                        
-            for snp in interval2:
-                chrom2_loc2 = snp.split(':')
-                chrom2 = chrom2_loc2[0]
-                loc2 = chrom2_loc2[1]
+                #print("Interval1: ", interval1)
+                #print("Interval2: ", interval2)
                 
-                for ele_loc in gene_reg_locations:
-                    if(chrom2 == ele_loc[0] and loc2 >= ele_loc[1] and loc2 <= ele_loc[2]):
-                        interval2_elements.add(ele_loc[3])
-                        
-            
-            writer.write(str(interval1_elements) + '\t')
-            writer.write(str(interval2_elements) + '\t')
-            writer.write(p_values[i] + '\n')
-            
-            i += 1
+                for snp in interval1:
+                    for snp2 in interval2:
+                        #print(snp, snp2)
+                        if( (snp, snp2) in interactions or (snp2, snp) in interactions ):
+                            
+                            #print("Found SNP pair in interactions!")
+                            chrom1_loc1 = snp.split(':')
+                            chrom1 = chrom1_loc1[0]
+                            loc1 = chrom1_loc1[1]
+                            element1 = ''
+                            
+                            #print('chrom1: ', chrom1)
+                            #print('loc1: ', loc1)
+                            
+                            for ele_loc in gene_reg_locations:
+                                if(chrom1 == ele_loc[0] and int(loc1) >= int(ele_loc[1]) and int(loc1) <= int(ele_loc[2])):
+                                    # There are a small number of overlapping genes, these are the 
+                                    # poorly defined genes, such as MICB and HLA-C, for whom the exact 
+                                    # loci are not yet fully established.
+                                    element1 += ele_loc[3] + ' '
+                                    
+                            #print(element1)
+                            
+                            chrom2_loc2 = snp2.split(':')
+                            chrom2 = chrom2_loc2[0]
+                            loc2 = chrom2_loc2[1]
+                            element2 = ''
+                            
+                            #print('chrom2: ', chrom2)
+                            #print('loc2: ', loc2)
+                            
+                            for ele_loc in gene_reg_locations:
+                                if(chrom2 == ele_loc[0] and int(loc2) >= int(ele_loc[1]) and int(loc2) <= int(ele_loc[2])):
+                                    element2 += ele_loc[3] + ' '
+                                    
+                            #print(element2)
+                            
+                            gene_pairs.add((element1, element2))
+                
+                writer.write(str(gene_pairs) + '\t')
+                writer.write(p_values[i] + '\n')
+                
+                i += 1
+    else:
+        # Note, what is put into the file, are the locations of the genes, which contain 
+        # interacting SNPs within the interacting intervals. 
+        
+        # This file is made for generation of Circo plots. In it we don't want to see the same gene pairs even if they 
+        # belong to different interval pairs. 
+        filename = out_dir + 'biclustering_results_all.txt'
+        with open(filename, 'a') as writer:
+            i = 0
+            tracker = set()
+            num_interval_pairs = len(chrom1_ranges)
+            while i < num_interval_pairs:
+                gene_pairs = set()
+                interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
+                interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
+                p_val = p_values[i]
+                
+                #print('interval1: ', interval1)
+                #print('interval2: ', interval2)
+                
+                for snp in interval1:
+                    for snp2 in interval2:
+                        if( (snp, snp2) in interactions or (snp2, snp) in interactions ):
+                
+                            chrom1_loc1 = snp.split(':')
+                            chrom1 = chrom1_loc1[0]
+                            loc1 = chrom1_loc1[1]
+                            element1 = ''
+                            
+                            for ele_loc in gene_reg_locations:
+                                if(chrom1 == ele_loc[0] and int(loc1) >= int(ele_loc[1]) and int(loc1) <= int(ele_loc[2])):
+                                    element1 = 'chr' + ele_loc[0] + ',' + ele_loc[1] + ',' + ele_loc[2]
+                            
+                            chrom2_loc2 = snp2.split(':')
+                            chrom2 = chrom2_loc2[0]
+                            loc2 = chrom2_loc2[1]
+                            element2 = ''
+                            
+                            for ele_loc in gene_reg_locations:
+                                if(chrom2 == ele_loc[0] and int(loc2) >= int(ele_loc[1]) and int(loc2) <= int(ele_loc[2])):
+                                    element2 = 'chr' + ele_loc[0] + ',' + ele_loc[1] + ',' + ele_loc[2]
+                            
+                            gene_pairs.add((element1, element2))
+                
+                #print(gene_pairs)
+                #print(p_val)
+                for pair in gene_pairs:
+                    if(pair not in tracker):
+                        writer.write(pair[0] + ',' + pair[1] + ',' + str(p_val) + '\n')
+                    tracker.add(pair)
+                i += 1
     
     
 def parse_remma_interaction_data(interaction_files:list, pval_cutoff:float, chrom1:str, chrom2:str):
@@ -343,7 +531,6 @@ def initialize_matrices2(bim_file:str, interaction_files:list, chrom1:str, chrom
         
     N = 0
     n = 0
-    inter_matrix = dict()
 
     total_markers1 = len(chrom1_snps)
     total_markers2 = len(chrom2_snps)
@@ -356,22 +543,20 @@ def initialize_matrices2(bim_file:str, interaction_files:list, chrom1:str, chrom
     else:
         N = total_markers1 * total_markers2
     
+    inter_array = np.zeros((total_markers1, total_markers2), dtype=int)
     i = 0
     while i < total_markers1:
         j = 0
         while j < total_markers2:
-            if(upper_triangular):
-                if(i >= j):
-                    inter_matrix[(i,j)] = 0 
-                    j+=1
-                    continue
             if((chrom1_snps[i], chrom2_snps[j]) in interactions or
                (chrom2_snps[j], chrom1_snps[i]) in interactions):
+                if(upper_triangular):
+                    if(i >= j):
+                        j += 1
+                        continue
                 #print(i,j)
-                inter_matrix[(i,j)] = 1
+                inter_array[i][j] = 1
                 n += 1
-            else:
-                inter_matrix[(i,j)] = 0 
                 
             j += 1
             
@@ -383,8 +568,12 @@ def initialize_matrices2(bim_file:str, interaction_files:list, chrom1:str, chrom
     print("Chromosome1: ", chrom1)
     print("Chromosome2: ", chrom2)
     print("P-Value Cutoff: ", pval_cutoff)
+    
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    print("Current Time =", current_time)
                 
-    return N, n, inter_matrix, upper_triangular
+    return N, n, inter_array, upper_triangular
     
   
 def initialize_matrices(total_markers:int, marker_file:str, upper_triangular:bool = True):
@@ -495,6 +684,7 @@ def convert_dict_to_2D_numpy_array(input_dict:dict):
             
     return np.array(TwoDList)
 
+@jit(nopython=True)
 def comp_alt(i:int, j:int, a:int, b:int, inter_matrix:'np.array', upper_triangular:bool = True,
              compute_k:bool = True):
     # Assume that tested interaction matrix is either upper triangular or full of 1s.
@@ -540,7 +730,8 @@ def comp_alt(i:int, j:int, a:int, b:int, inter_matrix:'np.array', upper_triangul
     
     return k_val, m_val
 
-def compute_k_m_parallel(max_inter_length:int, inter_matrix:dict,
+@jit(nopython=True)
+def compute_k_m_parallel(max_inter_length:int, inter_array,
                          upper_triangular:bool, i_start:int, i_end:int, N:int, n:int):
     
     # Our only knowledge about inter_matrix is that it consists of 1s and 0s 
@@ -551,7 +742,6 @@ def compute_k_m_parallel(max_inter_length:int, inter_matrix:dict,
     # Given this we do not need to actually parse tested_inter_matrix to compute m.
     
     # Convert inter_matrix and tested_inter_matrix into numpy arrays.
-    inter_array = convert_dict_to_2D_numpy_array(inter_matrix)
     dimensions = inter_array.shape
     total_markers1 = dimensions[0]
     total_markers2 = dimensions[1]
@@ -614,9 +804,12 @@ def compute_k_m_parallel(max_inter_length:int, inter_matrix:dict,
         #print("Number of completed k computations: ", computed_k)
     
     print("Length of km_results: ", len(km_results))
+    #now = datetime.now()
+    #current_time = now.strftime("%H:%M:%S")
+    #print("Current Time =", current_time)
     return km_results
 
-
+#@jit(nopython=True)
 def compute_interval_pval_parallel(km_results:dict, N:int, n:int, i_start:int, i_end:int,
                                    max_inter_length:int, out_dir:str, chrom1:str = '-1',
                                    chrom2:str = '-1'):
@@ -670,6 +863,9 @@ def compute_interval_pval_parallel(km_results:dict, N:int, n:int, i_start:int, i
             #     print(i)
             #     print(len(computed_pvals))
     print("Computed p-values.")
+    # now = datetime.now()
+    # current_time = now.strftime("%H:%M:%S")
+    # print("Current Time =", current_time)
     return pval_results
 
 def trim_intervals(sorted_intervals:list):
@@ -718,6 +914,61 @@ def trim_intervals(sorted_intervals:list):
     return culled_inter_pairs
 
 class TestBiClusterCodeBase(unittest.TestCase):  
+    
+    def test_parse_biclustering_results(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
+        marker_file1 = 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
+        marker_file2 = 'epiAA_aa2_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
+        marker_file3 = 'epiAA_aa3_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
+        marker_file4 = 'epiAD_ad_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
+        marker_file5 = 'epiDD_dd_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
+        
+        marker_files = [indir + marker_file1, indir + marker_file2, indir + marker_file3, indir + marker_file4, indir + marker_file5]
+        
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        biclustering_file = indir + 'biclustering_results_chr1_chr3.txt'
+        bim_file = indir + 'NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.bim'
+        gene_location_file = indir + 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
+        out_dir = indir
+
+        parse_biclustering_results(biclustering_file, bim_file, gene_location_file, '1', '3', marker_files, 1e-7, out_dir, False) 
+        filename = indir + 'biclustering_results_chr1_chr3_annotated.txt'
+        rows = []
+        with open(filename) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter='\t')
+            for row in csv_reader:
+                rows.append(row)
+                
+        self.assertEqual(rows[0], ["{('DTL ', 'SRGAP3 ')}", '9.605131888649506e-62'])
+        self.assertEqual(rows[1], ["{('DTL ', 'SRGAP3 ')}", '6.4212833992207265e-27'])
+        self.assertEqual(rows[2], ["{('SRGAP2 ', 'ROBO2 ')}", '4.0199636843080785e-19'])
+        
+        parse_biclustering_results(biclustering_file, bim_file, gene_location_file, '1', '3', marker_files, 1e-7, out_dir, True) 
+    
+        biclustering_file = indir + 'biclustering_results_chr4_chr10.txt'
+        parse_biclustering_results(biclustering_file, bim_file, gene_location_file, '4', '10', marker_files, 1e-7, out_dir, True)
+        biclustering_file = indir + 'biclustering_results_chr4_chr5.txt'
+        parse_biclustering_results(biclustering_file, bim_file, gene_location_file, '4', '5', marker_files, 1e-7, out_dir, True)
+        biclustering_file = indir + 'biclustering_results_chr8_chr17.txt'
+        parse_biclustering_results(biclustering_file, bim_file, gene_location_file, '8', '17', marker_files, 1e-7, out_dir, True)
+        
+        filename = indir + 'biclustering_results_all.txt'
+        rows = []
+        with open(filename) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter='\t')
+            for row in csv_reader:
+                rows.append(row)
+                
+        self.assertEqual(rows[0], ['chr1,212206918,212280187,chr3,9020275,9293369,9.605131888649506e-62'])
+        self.assertEqual(rows[1], ['chr1,206514199,206639783,chr3,75984644,77701114,4.0199636843080785e-19'])
+        self.assertEqual(rows[2], ['chr4,6320304,6567327,chr10,52748910,54060110,2.993577604860245e-295'])
+        self.assertEqual(rows[3], ['chr4,88080213,88143674,chr5,145967066,146463083,5.967210373347171e-208'])
+        self.assertEqual(rows[4], ['chr4,20253234,20622788,chr5,15498304,15941900,4.7347537763144387e-20'])
+        
+        self.assertTrue(['chr8,8957214,8964665,chr17,28519336,28564986,1.1381827143817773e-19'] in rows)
+        self.assertTrue(['chr8,8957214,8964665,chr17,28443018,28446019,1.1381827143817773e-19'] in rows)
+        
+        os.remove(indir + 'biclustering_results_all.txt')
     
     def test_generate_gene_blocks(self):
         fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
@@ -822,16 +1073,21 @@ class TestBiClusterCodeBase(unittest.TestCase):
         chrom1 = '1'
         chrom2 = '1'
         
-        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
+        N, n, inter_array, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
         self.assertEqual(N, 435)
         self.assertEqual(n, 1)
         self.assertTrue(upper_tri)
         
-        for k,v in inter_matrix.items():
-            if(k == (12,19)):
-                self.assertEqual(v, 1)
-            else:
-                self.assertEqual(v, 0)
+        expected_inter_array = np.zeros((inter_array.shape[0],inter_array.shape[1]))
+        expected_inter_array[12][19] = 1
+        
+        i = 0 
+        while i < inter_array.shape[0]:
+            j = 0
+            while j < inter_array.shape[1]:
+                self.assertEqual(inter_array[i][j], expected_inter_array[i][j])
+                j += 1
+            i += 1
                 
         indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
         bim_file = indir + 'Test_Data.bim'
@@ -839,64 +1095,99 @@ class TestBiClusterCodeBase(unittest.TestCase):
         chrom1 = '2'
         chrom2 = '3'
         
-        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
+        N, n, inter_array, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
         
         self.assertEqual(N, 900)
         self.assertEqual(n, 5)
         self.assertFalse(upper_tri)
-        for k,v in inter_matrix.items():
-            if(k in [(1,0), (8,11), (10,11), (12,14), (14,14)]):
-                self.assertEqual(v, 1)
-            else:
-                self.assertEqual(v, 0)
+        
+        expected_inter_array = np.zeros((inter_array.shape[0],inter_array.shape[1]))
+        for k in [(1,0), (8,11), (10,11), (12,14), (14,14)]:
+            expected_inter_array[k[0]][k[1]] = 1
+        
+        i = 0 
+        while i < inter_array.shape[0]:
+            j = 0
+            while j < inter_array.shape[1]:
+                self.assertEqual(inter_array[i][j], expected_inter_array[i][j])
+                j += 1
+            i += 1
                 
-        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-6)
+        N, n, inter_array, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-6)
         
         self.assertEqual(N, 900)
         self.assertEqual(n, 1)
         self.assertFalse(upper_tri)
-        for k,v in inter_matrix.items():
-            if(k in [(1,0)]):
-                self.assertEqual(v, 1)
-            else:
-                self.assertEqual(v, 0)
+        
+        expected_inter_array = np.zeros((inter_array.shape[0],inter_array.shape[1]))
+        for k in [(1,0)]:
+            expected_inter_array[k[0]][k[1]] = 1
+        
+        i = 0 
+        while i < inter_array.shape[0]:
+            j = 0
+            while j < inter_array.shape[1]:
+                self.assertEqual(inter_array[i][j], expected_inter_array[i][j])
+                j += 1
+            i += 1
                 
         chrom1 = '3'
         chrom2 = '2'
-        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
+        N, n, inter_array, upper_tri = initialize_matrices2(bim_file, [inter_file], chrom1, chrom2, 1e-5)
         
         self.assertEqual(N, 900)
         self.assertEqual(n, 5)
         self.assertFalse(upper_tri)
-        for k,v in inter_matrix.items():
-            if(k in [(0,1), (11,8), (11,10), (14,12), (14,14)]):
-                self.assertEqual(v, 1)
-            else:
-                self.assertEqual(v, 0)
+        
+        expected_inter_array = np.zeros((inter_array.shape[0],inter_array.shape[1]))
+        for k in [(0,1), (11,8), (11,10), (14,12), (14,14)]:
+            expected_inter_array[k[0]][k[1]] = 1
+        
+        i = 0 
+        while i < inter_array.shape[0]:
+            j = 0
+            while j < inter_array.shape[1]:
+                self.assertEqual(inter_array[i][j], expected_inter_array[i][j])
+                j += 1
+            i += 1
                 
         chrom1 = '2'
         chrom2 = '3'
         inter_file2 = indir + 'Test_Interaction2.anno'
-        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file, inter_file2], chrom1, chrom2, 1e-5)
+        N, n, inter_array, upper_tri = initialize_matrices2(bim_file, [inter_file, inter_file2], chrom1, chrom2, 1e-5)
         self.assertEqual(N, 900)
         self.assertEqual(n, 6)
         self.assertFalse(upper_tri)
-        for k,v in inter_matrix.items():
-            if(k in [(1,0), (8,11), (10,11), (12,14), (14,14), (27, 25)]):
-                self.assertEqual(v, 1)
-            else:
-                self.assertEqual(v, 0)
+                
+        expected_inter_array = np.zeros((inter_array.shape[0],inter_array.shape[1]))
+        for k in [(1,0), (8,11), (10,11), (12,14), (14,14), (27, 25)]:
+            expected_inter_array[k[0]][k[1]] = 1
+        
+        i = 0 
+        while i < inter_array.shape[0]:
+            j = 0
+            while j < inter_array.shape[1]:
+                self.assertEqual(inter_array[i][j], expected_inter_array[i][j])
+                j += 1
+            i += 1
                 
                 
-        N, n, inter_matrix, upper_tri = initialize_matrices2(bim_file, [inter_file, inter_file2], chrom1, chrom2, 1e-8)
+        N, n, inter_array, upper_tri = initialize_matrices2(bim_file, [inter_file, inter_file2], chrom1, chrom2, 1e-8)
         self.assertEqual(N, 900)
         self.assertEqual(n, 2)
         self.assertFalse(upper_tri)
-        for k,v in inter_matrix.items():
-            if(k in [(8,11), (27, 25)]):
-                self.assertEqual(v, 1)
-            else:
-                self.assertEqual(v, 0)
+
+        expected_inter_array = np.zeros((inter_array.shape[0],inter_array.shape[1]))
+        for k in [(8,11), (27, 25)]:
+            expected_inter_array[k[0]][k[1]] = 1
+        
+        i = 0 
+        while i < inter_array.shape[0]:
+            j = 0
+            while j < inter_array.shape[1]:
+                self.assertEqual(inter_array[i][j], expected_inter_array[i][j])
+                j += 1
+            i += 1
         
         
     def test_comp_alt(self):
@@ -958,22 +1249,13 @@ class TestBiClusterCodeBase(unittest.TestCase):
         
     def test_compute_k_m_parallel(self):
         
-        inter_matrix = dict()
-        i, j = 0, 0
-        while i < 10:
-            j = 0
-            while j < 10:
-                inter_matrix[(i,j)] = 0
-                j += 1
-            i += 1
-            
-        inter_matrix[(2,8)] = 1
-        inter_matrix[(5,8)] = 1
-        inter_matrix[(5,9)] = 1
+        inter_array = np.zeros((10,10))
+        for k in [(2,8), (5,8), (5,9)]:
+            inter_array[k[0]][k[1]] = 1
         
         # Note, technically, the last parameter should be 3, but we enter 0 
         # to force all k,m pairs to be written.
-        km_results = compute_k_m_parallel(4, inter_matrix, True, 0, 9, 45, 0)
+        km_results = compute_k_m_parallel(4, inter_array, True, 0, 9, 45, 0)
         
         self.assertEqual(km_results[(0,5,4,4)], (1,16))
         self.assertEqual(km_results[(0,8,3,1)], (1,3))
@@ -1007,39 +1289,23 @@ class TestBiClusterCodeBase(unittest.TestCase):
         self.assertEqual(km_results[(5,8,1,2)], (2,2))
         self.assertEqual(km_results[(5,8,2,1)], (1,2))
         
-        inter_matrix = dict()
-        i, j = 0, 0
-        while i < 10:
-            j = 0
-            while j < 10:
-                inter_matrix[(i,j)] = 0
-                j += 1
-            i += 1
-            
-        inter_matrix[(2,8)] = 1
+        inter_array = np.zeros((10,10))
+        for k in [(2,8)]:
+            inter_array[k[0]][k[1]] = 1
         
         # Note, technically, the last parameter should be 1, but we enter 0 
         # to force all k,m pairs to be written.
-        km_results = compute_k_m_parallel(4, inter_matrix, True, 0, 9, 45, 0)
+        km_results = compute_k_m_parallel(4, inter_array, True, 0, 9, 45, 0)
         self.assertEqual(len(km_results), 63)
       
-    def test_compute_interval_pval_parallel(self):
-        inter_matrix = dict()
-        i, j = 0, 0
-        while i < 10:
-            j = 0
-            while j < 10:
-                inter_matrix[(i,j)] = 0
-                j += 1
-            i += 1
-            
-        inter_matrix[(2,8)] = 1
-        inter_matrix[(5,8)] = 1
-        inter_matrix[(5,9)] = 1
+    def test_compute_interval_pval_parallel(self): 
+        inter_array = np.zeros((10,10))
+        for k in [(2,8), (5,8), (5,9)]:
+            inter_array[k[0]][k[1]] = 1
         
         # Note, technically, the last parameter should be 3, but we enter 0 
         # to force all k,m pairs to be written.
-        km_results = compute_k_m_parallel(4, inter_matrix, True, 0, 9, 45, 0)
+        km_results = compute_k_m_parallel(4, inter_array, True, 0, 9, 45, 0)
         out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Output/'
         pval_results = compute_interval_pval_parallel(km_results, 45, 3, 0, 9, 4, out_dir)
         #print(pval_results)
@@ -1130,6 +1396,7 @@ def test_suite():
     unit_test_suite.addTest(TestBiClusterCodeBase('test_generate_gene_blocks'))
     unit_test_suite.addTest(TestBiClusterCodeBase('test_trim_intervals'))
     unit_test_suite.addTest(TestBiClusterCodeBase('test_initialize_matrices2'))
+    unit_test_suite.addTest(TestBiClusterCodeBase('test_parse_biclustering_results'))
     
     runner = unittest.TextTestRunner()
     runner.run(unit_test_suite)

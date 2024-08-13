@@ -14,156 +14,138 @@ if __name__ == "__main__":
     assert sys.version_info.minor >= 7  
     
     test_suite()
+    
+    indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
+    marker_file1 = 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
+    marker_file2 = 'epiAA_aa2_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
+    marker_file3 = 'epiAA_aa3_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
+    marker_file4 = 'epiAD_ad_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
+    marker_file5 = 'epiDD_dd_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
+    
+    marker_files = [indir + marker_file1, indir + marker_file2, indir + marker_file3, indir + marker_file4, indir + marker_file5]
+    marker_files2 = [marker_file1, marker_file2, marker_file3, marker_file4, marker_file5]
     '''
-    indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Bio_Filter_Results/'
-    marker_file1 = indir + 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'
-    marker_file2 = indir + 'epiAA_aa2_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'
-    marker_file3 = indir + 'epiAD_ad_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'
-    marker_file4 = indir + 'epiDD_dd_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'
-    marker_files = [marker_file1, marker_file2, marker_file3, marker_file4]
-    bim_file = indir + 'NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.bim'
-    chrom1,chrom2 = '6','6'
-    N,n,inter_matrix,up_tri = initialize_matrices2(bim_file,marker_files, chrom1, chrom2, 1e-06)
-    out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Bio_Filter_Results/PostBiclustering/'
-    i_start, i_end = 4332, 4333
-    km_results = compute_k_m_parallel(60, inter_matrix, up_tri, i_start, i_end, N, n)
-    compute_interval_pval_parallel(km_results, N, n, i_start, i_end, 60, out_dir, chrom1=chrom1, chrom2=chrom2)
+    bim_file = 'NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.bim'
+    
+    
+    out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/'
+    chrom_list = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]
+    #chrom_list = [1,2]
+    for chrom1 in chrom_list:
+        for chrom2 in chrom_list:
+            
+            if(chrom2 < chrom1):
+                continue
+        
+            N,n,inter_array,up_tri = initialize_matrices2(indir + bim_file, marker_files, str(chrom1), str(chrom2), 1e-8)
+            out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/'
+            #print("Initialized matrices.")
+            print("N = ", N)
+            print("n = ", n)
+            print(inter_array.shape)
+            
+            if(n > 1):
+                generate_multicpu_files(marker_files2, bim_file, inter_array.shape[0], inter_array.shape[0]//1000, out_dir, str(chrom1), str(chrom2), 1e-8)
     '''
-    
-    # fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/'
-    # fname += 'Expanded_Ranges/Combined_Strict_Set_score900_db_exp_1_and_genehancer_score_10_ranges.txt'
-    # blocks = generate_gene_blocks(fname, 100000000)
-    # print(len(blocks))
-    # print(blocks)
-    
-    # out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/'
-    # chrom_list = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,22]
-    # for chrom in chrom_list:
-    # generate_multicpu_files(1487, 10, out_dir, '19', '19', 1e-6)
-    
-    # SINGLE CPU VERSION REMMA DATA
+
     '''
-    indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Bio_Filter_Results/'
-    marker_file1 = indir + 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'
-    marker_file2 = indir + 'epiAA_aa2_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'
-    marker_file3 = indir + 'epiAD_ad_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'
-    marker_file4 = indir + 'epiDD_dd_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno'
-    marker_files = [marker_file1, marker_file2, marker_file3, marker_file4]
-    bim_file = indir + 'NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.bim'
-    
-    
-    out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Bio_Filter_Results/PostBiclustering/'
+    bim_file = 'NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.bim'
+    bim_file = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/' + bim_file
+    out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Set_Biclustering/'
+    gene_location_file = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+    gene_location_file += 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt' 
     i = 1
-    elements = set()
+    pairs = set()
     while i <= 22:
         j = i
+        #j = 6
         while j <= 22:
             chrom1,chrom2 = str(i), str(j)
+            
+        # chrom1,chrom2 = str(chrom_pair[0]), str(chrom_pair[1])
             try:
-                parse_biclustering_results(out_dir + 'biclustering_results_chr'+chrom1+'_chr'+chrom2+'.txt',
-                                            bim_file, chrom1, chrom2, out_dir)
-                fname = out_dir + 'biclustering_results_chr'+chrom1+'_chr'+chrom2+'_annotated.txt'
-                with open(fname) as csv_file:
-                    csv_reader = csv.reader(csv_file, delimiter='\t')
-                    for row in csv_reader:
-                        interval0 = row[0][1:-1]
-                        interval1 = row[1][1:-1]
-                        if(',' in interval0):
-                            row0_elements = interval0.split(', ')
-                            for ele in row0_elements:
-                                elements.add(ele)
-                        else:
-                            elements.add(interval0)
+                bicluster_file = out_dir + 'biclustering_results_chr'+chrom1+'_chr'+chrom2+'.txt'
+                # parse_biclustering_results(bicluster_file, bim_file, gene_location_file,
+                #                            chrom1, chrom2, marker_files, 1e-8, out_dir, True)
+                
+                print('chrom1: ', chrom1, '; chrom2: ', chrom2)
+                print(get_number_of_interacting_snps_in_interval(bicluster_file, bim_file, gene_location_file,
+                                                                 chrom1, chrom2, marker_files, 1e-8))
+                
+                # fname = out_dir + 'biclustering_results_chr'+chrom1+'_chr'+chrom2+'_annotated.txt'
+                # with open(fname) as csv_file:
+                #     csv_reader = csv.reader(csv_file, delimiter='\t')
+                #     for row in csv_reader:
                         
-                        if(',' in interval1):
-                            row1_elements = interval1.split(', ')
-                            for ele in row1_elements:
-                                elements.add(ele)
-                        else:
-                            elements.add(interval1)
-                            
+                #         elements = set()
+                #         elements2 = set()
+                        
+                #         interval0 = row[0][1:-1]
+                #         interval1 = row[1][1:-1]
+                #         if(',' in interval0):
+                #             row0_elements = interval0.split(', ')
+                #             for ele in row0_elements:
+                #                 index = ele.find('_ALT')
+                #                 if(index != -1):
+                #                     ele = ele[0:index]
+                #                 elements.add(ele.replace("'", ""))
+                #         else:
+                #             index = interval0.find('_ALT')
+                #             if(index != -1):
+                #                 interval0 = interval0[0:index]
+                #             elements.add(interval0.replace("'", ""))
+                        
+                #         if(',' in interval1):
+                #             row1_elements = interval1.split(', ')
+                #             for ele in row1_elements:
+                #                 index = ele.find('_ALT')
+                #                 if(index != -1):
+                #                     ele = ele[0:index]
+                #                 elements2.add(ele.replace("'", ""))
+                #         else:
+                #             index = interval1.find('_ALT')
+                #             if(index != -1):
+                #                 interval1 = interval1[0:index]
+                #             elements2.add(interval1.replace("'", ""))
+                        
+                #         for ele in elements:
+                #             for ele2 in elements2:
+                #                 pairs.add((ele, ele2))
+                #                 print((ele, ele2))
+                              
             except FileNotFoundError:
                 pass
             j += 1
         i += 1
     '''
+        
+    # gene_pairs = set()
+    # out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Set_Biclustering/'
+    # fname = out_dir + 'biclustering_regulatory_gene_pairs_temporary.txt'
+    # with open(fname) as csv_file:
+    #     csv_reader = csv.reader(csv_file, delimiter=',')
+    #     for row in csv_reader:
+    #         gene_pairs.add((row[0], row[1]))
+    # get_msigdb_enrichment(gene_pairs, out_dir)
+    
+    # fname_out = out_dir + 'biclustering_results_regulatory_elements.txt'
+    # with open(fname_out, 'w') as writer:
+    #     for element in elements:
+    #         writer.write(element.replace("'", "") + '\n')
+    
+    
+    
     '''
-    chrom_list = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,19,20,22]
-    for chrom in chrom_list:
-        N,n,inter_matrix,up_tri = initialize_matrices2(bim_file,marker_files, str(chrom), str(chrom), 1e-6)
-        out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Output/'
-        print("Initialized matrices.")
-        print("N = ", N)
-        print("n = ", n)
-        print(convert_dict_to_2D_numpy_array(inter_matrix).shape)
-    '''
-    '''
-    #print('Inter Matrix Shape = ', convert_dict_to_2D_numpy_array(inter_matrix).shape)
-    km_results = compute_k_m_parallel(60, inter_matrix, up_tri, 152, 160, N, n)
-    print("Computed k and m values.")
-    print(len(km_results))
-    s_inter_pairs = compute_interval_pval_parallel(km_results, N, n, 152, 160, 60, out_dir,
-                                                   chrom1=chrom1, chrom2 = chrom2)
-    print("Computed p-values for interval pairs.")
-    filename = out_dir + 'chr' + chrom1 + '_chr' + chrom2 + '_pval_results_0_1.csv'
-    pval_results = dict()
-    with open(filename) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
+    fname_out = 'combined_set_background_genes.txt'
+    background_genes = []
+    indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+    fname = indir + 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt'
+    with open(fname) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=' ')
         for row in csv_reader:
-            pval_results[(int(row[0]),int(row[1]),int(row[2]),int(row[3]))] = float(row[6])
-    s_inter_pairs = sorted(pval_results.items(), key = lambda x: abs(x[1]), reverse = False)
-    trimmed_inter_pairs = trim_intervals(s_inter_pairs)
-    print("Trimmed interval pairs.")
-    '''
-    
-    # SINGLE CPU VERSION PUBLICATION DATA
-    '''
-    marker_file = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/biclustering_pub_marker_pairs.csv'
-    N,n,inter_matrix,up_tri = initialize_matrices(1211,marker_file)
-    out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Output/'
-    print("Initialized matrices.")
-    print("N = ", N)
-    print("n = ", n)
-    #km_results = compute_k_m_parallel(60, inter_matrix, up_tri, 0, 1211, N, n)
-    km_results = compute_k_m_parallel(60, inter_matrix, up_tri, 0, 1, N, n)
-    print("Computed k and m values.")
-    print(len(km_results))
-    #s_inter_pairs = compute_interval_pval_parallel(km_results, N, n, 0, 1211, 60, out_dir)
-    s_inter_pairs = compute_interval_pval_parallel(km_results, N, n, 0, 1, 60, out_dir)
-    print("Computed p-values for interval pairs.")
-    #filename = out_dir + 'pval_results_0_1211.csv'
-    filename = out_dir + 'pval_results_0_1.csv'
-    pval_results = dict()
-    with open(filename) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        for row in csv_reader:
-            pval_results[(int(row[0]),int(row[1]),int(row[2]),int(row[3]))] = float(row[6])
-    s_inter_pairs = sorted(pval_results.items(), key = lambda x: abs(x[1]), reverse = False)
-    trimmed_inter_pairs = trim_intervals(s_inter_pairs)
-    print("Trimmed interval pairs.")
-    '''
-    
-    
-    # MULTIPLE CPU VERSION PUBLICATION DATA
-    '''
-    # COMPUTE k,m,p-values SAME AS FOR SINGLE CPU VERSION PUBLICATION DATA
-    
-    # Now on a single CPU read in all the p-value results, sort them, and trim the intervals
-    # Assume that all the p-value results can be stored in memory and stored on a single CPU
-    pval_results = []
-    i_intervals = [(0,10), (11, 20)]
-    for i_pair in i_intervals:
-        filename = out_dir + 'pval_results_' + str(i_pair[0]) + '_' + str(i_pair[1]) + '.csv'
-        with open(filename) as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=',')
-            for row in csv_reader:
-                pval_results[(row[0],row[1],row[2],row[3])] = row[6]
-                
-    s_inter_pairs = sorted(pval_results.items(), key = lambda x: abs(x[1]), reverse = False)
-    trimmed_inter_pairs = trim_intervals(s_inter_pairs)
-    filename = out_dir + 'biclustering_results.txt'
-    with open(filename, 'w') as writer:
-        for inter_pair in trimmed_inter_pairs:
-            writer.write(str(inter_pair[0][0])+','+str(inter_pair[0][1])+','+str(inter_pair[0][2])
-                         +','+str(inter_pair[0][3])+','+str(inter_pair[1])+'\n')
+            background_genes.append(row[3])
+            
+    with open(indir + fname_out, 'w') as writer:
+        for gene in background_genes:
+            writer.write(gene.replace("'", "") + '\n')
     '''

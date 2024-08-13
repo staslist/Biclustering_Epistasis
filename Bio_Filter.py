@@ -9,11 +9,11 @@ import csv
 import unittest
 import requests ## python -m pip install requests
 
-def process_remma_results(full_dir:str, fname:str, generate_annotation:bool = True):
+def process_remma_results(anno_fname:str, gene_range_file:str, out_dir:str,
+                          generate_annotation:bool = True, p_val_cutoff:float = 1e-6):
     # Process REMMA Results
-    file = full_dir + fname
     inter_pairs = {}
-    with open(file) as csv_file:
+    with open(anno_fname) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=' ')
         line_num = 0
         for row in csv_reader:
@@ -21,15 +21,13 @@ def process_remma_results(full_dir:str, fname:str, generate_annotation:bool = Tr
             if(line_num > 1):
                 inter_pairs[row[2] + '_' + row[9]] = float(row[18])
             line_num += 1
-            
-    full_dir2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
-    file2 = full_dir2 + 'Combined_Strict_Set_score900_db_exp_1_and_genehancer_score_10_ranges.txt'
+    
     full_dir3 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Genehancer/'
     file3 = full_dir3 + 'GeneHancer_AnnotSV_hg19_v5.18.txt'
     gene_locations = []
     reg_locations = []
 
-    with open(file2) as csv_file:
+    with open(gene_range_file) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=' ')
         for row in csv_reader:
             gene_locations.append((row[0],row[1],row[2],row[3]))
@@ -52,7 +50,7 @@ def process_remma_results(full_dir:str, fname:str, generate_annotation:bool = Tr
 
     s_inter_pairs2 = []
     for pair in s_inter_pairs:
-        if(pair[1] < 1e-7):
+        if(pair[1] < p_val_cutoff):
             s_inter_pairs2.append(pair)
     
     if(not generate_annotation):
@@ -118,7 +116,7 @@ def process_remma_results(full_dir:str, fname:str, generate_annotation:bool = Tr
         i += 1
 
 
-    fname_out = full_dir + 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score_10_regions_maf001_qc3_multibed_gene_results.txt'
+    fname_out = out_dir + 'TEMPLATE1.txt'
 
     with open(fname_out, 'w') as writer:
         for tup in s_gene_pairs:
@@ -126,7 +124,7 @@ def process_remma_results(full_dir:str, fname:str, generate_annotation:bool = Tr
                          ' ' + str(tup[3]) + ' ' + str(tup[4]))
             writer.write('\n')
               
-    fname_out = full_dir + 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score_10_regions_maf001_qc3_multibed_reg_results.txt'
+    fname_out = out_dir + 'TEMPLATE2.txt'
 
     with open(fname_out, 'w') as writer:
         for tup in s_reg_pairs:
@@ -269,32 +267,54 @@ def generate_remma_scripts(out_dir:str, filter_type:str, comp_type:str = 'approx
                         writer.write("res_file = home_dir + 'epiDD_" + grm_type + "_approx_parallel_merged_" + fname_base3 + "'\n")
                 
                 writer.write("annotation_snp_pos(res_file, bed_file, p_cut=" + str(p_cut_off) + ", dis=0)")
+        if(i == 1):
+            with open(out_dir + fname_sh, 'w') as writer2:
+                writer2.write("#!/bin/sh\n")
+                writer2.write("#SBATCH --job-name=SL_" + fname_base + "\n")
+                writer2.write("#SBATCH --nodes=1\n")
+                writer2.write("#SBATCH --ntasks=1\n")
+                writer2.write("#SBATCH --cpus-per-task=4\n")
+                writer2.write("#SBATCH --mem=48gb\n")
+                writer2.write("#SBATCH --time=240:00:00\n")
+                writer2.write("#SBATCH --partition=shared\n\n")
+                
+                writer2.write("cd $SLURM_SUBMIT_DIR\n")
+                writer2.write("module load use.own\n")
+                writer2.write("module load python/3.8.3\n")
+                writer2.write("export PYTHONPATH=/gpfs/home/slistopad/.local/lib/python3.8/site-packages:$PYTHONPATH\n")
+                writer2.write("python3 " + fname_py + "\n")
+           
+        i += 1 
+    
+    fname_base1 = 'REMMA_' + grm_type + '_' + comp_type + '_parallel'
+    fname_base2 = '_NA3_' + filter_type + '_region_qc3' 
+    
+    fname_base = fname_base1 + '_array' + fname_base2
+    fname_sh = fname_base1 + '_array' + fname_base2 + '.sh'
+    fname_py = fname_base1 + '${SLURM_ARRAY_TASK_ID}' + fname_base2 + '.py'
+    
+    with open(out_dir + fname_sh, 'w') as writer2:
+        writer2.write("#!/bin/bash\n")
+        writer2.write("#SBATCH --job-name=SL_" + fname_base + "\n")
+        writer2.write('#SBATCH --array=2-'+str(num_jobs) + '\n')
+        writer2.write("#SBATCH --ntasks=1\n")
+        writer2.write("#SBATCH --mem=48gb\n")
+        writer2.write("#SBATCH --time=240:00:00\n")
+        writer2.write("#SBATCH --partition=shared\n\n")
         
-        with open(out_dir + fname_sh, 'w') as writer2:
-            writer2.write("#!/bin/sh\n")
-            writer2.write("#SBATCH --job-name=SL_" + fname_base + "\n")
-            writer2.write("#SBATCH --nodes=1\n")
-            writer2.write("#SBATCH --ntasks=1\n")
-            writer2.write("#SBATCH --cpus-per-task=4\n")
-            writer2.write("#SBATCH --mem=48gb\n")
-            writer2.write("#SBATCH --time=240:00:00\n")
-            writer2.write("#SBATCH --partition=shared\n\n")
-            
-            writer2.write("cd $SLURM_SUBMIT_DIR\n")
-            writer2.write("module load use.own\n")
-            writer2.write("module load python/3.8.3\n")
-            writer2.write("export PYTHONPATH=/gpfs/home/slistopad/.local/lib/python3.8/site-packages:$PYTHONPATH\n")
-            writer2.write("python3 " + fname_py + "\n")
-            
-        i += 1
+        writer2.write("cd $SLURM_SUBMIT_DIR\n")
+        writer2.write("module load use.own\n")
+        writer2.write("module load python/3.8.3\n")
+        writer2.write("export PYTHONPATH=/gpfs/home/slistopad/.local/lib/python3.8/site-packages:$PYTHONPATH\n")
+        writer2.write("python3 " + fname_py + "\n")
 
-def convert_plink_raw_to_simpleM(file:str):
+def convert_plink_raw_to_simpleM(file:str, delim:str):
     '''Ignore first six columns. Takes each column starting with 7th, read it in fully 
     starting from line 2, and then write it out as a row into another file with same name,
     but change .raw to _simpleM.txt'''
     rows = dict()
     with open(file) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=' ')
+        csv_reader = csv.reader(csv_file, delimiter=delim)
         j = 0
         for row in csv_reader:
             if(j == 0):
@@ -302,7 +322,9 @@ def convert_plink_raw_to_simpleM(file:str):
                 continue
             
             i = 6
+            #print('row length:', len(row))
             while i < len(row):
+                #print('i:', i)
                 try:
                     rows[i-6].append(row[i])
                 except KeyError:
@@ -312,6 +334,7 @@ def convert_plink_raw_to_simpleM(file:str):
             j += 1
             print(j)
     
+    #print(rows)
     fname_out = file[0:-4] + '_simpleM.txt'
     with open(fname_out, 'w') as writer:
         for k,v in rows.items():
@@ -393,7 +416,10 @@ def verify_gene_ranges(gene_range_file:str):
     return incorrect_genes
 
 def generate_all_assosciated_transcript_ranges(gene_list:list, gene_transc_map_file:str, 
-                                               transc_range_file:str, out_dir:str):
+                                               transc_range_file:str, out_dir:str, write:bool = False):
+    # This function takes a list of genes and for those genes produces all possible alternative gene 
+    # ranges. This function is meant to be applied to genes for whom multiple gene ranges are listed.
+    # It is assumed that all the gene ranges are listed on the same chromosome. 
     transcript_gene_map = dict()
     to_write = []
     
@@ -419,13 +445,14 @@ def generate_all_assosciated_transcript_ranges(gene_list:list, gene_transc_map_f
     
     alt_gene_ranges = []
     for gene in gene_list:
+        current_alt_gene_ranges = []
         current_gene_ranges = set()
         for line in to_write:
             split_line = line.split(' ')
-            chromosome = split_line[0]
             #print(split_line)
             if(split_line[3] == gene):
                 current_gene_ranges.add((int(split_line[1]), int(split_line[2])))
+                chromosome = split_line[0]
         
         #print(current_gene_ranges)
         current_gene_ranges = list(current_gene_ranges)
@@ -471,15 +498,23 @@ def generate_all_assosciated_transcript_ranges(gene_list:list, gene_transc_map_f
         num_clusters = 0
         for cluster in post_clustering:
             if(num_clusters == 0):
-                alt_gene_ranges.append( (chromosome, (cluster), gene) )
+                current_alt_gene_ranges.append( (chromosome, (cluster), gene) )
             elif(num_clusters == 1):
-                alt_gene_ranges.append( (chromosome, (cluster), gene + '_ALT') )
+                current_alt_gene_ranges.append( (chromosome, (cluster), gene + '_ALT') )
             else:
-                alt_gene_ranges.append( (chromosome, (cluster), gene + '_ALT' + str(num_clusters)) )
+                current_alt_gene_ranges.append( (chromosome, (cluster), gene + '_ALT' + str(num_clusters)) )
             num_clusters += 1
-                     
+            
+        alt_gene_ranges.append(current_alt_gene_ranges)
+    
+    if(write):
+        fname_out = out_dir + 'ucsc-hg19_converted_supplement.txt'
+        with open(fname_out, 'w') as writer:
+            for alt_gene_range in alt_gene_ranges:
+                for alter in alt_gene_range:
+                    writer.write(alter[0][3:] + ' ' + str(alter[1][0]) + ' ' + str(alter[1][1]) + ' ' + alter[2] + '\n')
+                 
     return alt_gene_ranges
-                    
                     
 
 def _check_overlap_and_merge(gene_range1:tuple, gene_range2:tuple):
@@ -504,13 +539,18 @@ def _check_overlap_and_merge(gene_range1:tuple, gene_range2:tuple):
 
     return False
 
-def build_ucsc_gene_ranges_file(ucsc_file:str, ucsc_ref_file:str):
+def build_ucsc_gene_ranges_file(ucsc_file:str, ucsc_ref_file:str, write:bool = True):
     transcript_to_gene = dict()
     with open(ucsc_ref_file) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter='\t')
         for row in csv_reader:
             transcript_to_gene[row[0]] = row[1]
             
+            
+    # Note that this procedure works well when dealing with heavily overlapping locations. 
+    # It does not work well when alternataive locations are not overlapping. 
+    # I have wrote another function for the latter case that generates all alternative locations 
+    # as separate gene entries. 
     gene_to_loci_map = dict()
     with open(ucsc_file) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter='\t')
@@ -526,11 +566,14 @@ def build_ucsc_gene_ranges_file(ucsc_file:str, ucsc_ref_file:str):
                 elif(int(row[3]) > int(gene_to_loci_map[gene_name][2])):
                     gene_to_loci_map[gene_name][2] = row[3]
     
-    fname_out = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
-    fname_out += 'ucsc-hg19_converted.txt'
-    with open(fname_out, 'w') as writer:
-        for k,v in gene_to_loci_map.items():
-            writer.write(v[0][3:] + '\t' + v[1] + '\t' + v[2] + '\t' + k + '\n')
+    if(write):
+        fname_out = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
+        fname_out += 'ucsc-hg19_converted.txt'
+        with open(fname_out, 'w') as writer:
+            for k,v in gene_to_loci_map.items():
+                writer.write(v[0][3:] + '\t' + v[1] + '\t' + v[2] + '\t' + k + '\n')
+    else:
+        return gene_to_loci_map
 
 def build_ncbi_refseq_gene_ranges_file(ncbi_refseq_file:str):
     gene_to_loci_map = dict()
@@ -551,7 +594,7 @@ def build_ncbi_refseq_gene_ranges_file(ncbi_refseq_file:str):
         for k,v in gene_to_loci_map.items():
             writer.write(v[0] + '\t' + v[1] + '\t' + v[2] + '\t' + k + '\n')
 
-def combine_gene_sets(set_names:list):
+def combine_gene_sets(set_names:list, write:bool = True):
     # This function takes the listed gene sets, combines them into one (union),
     # and writes out the result into a file.
     combined_gene_set = set([])
@@ -564,14 +607,17 @@ def combine_gene_sets(set_names:list):
             csv_reader = csv.reader(csv_file, delimiter='\t')
             for row in csv_reader:
                 combined_gene_set.add(row[0])
-                
-    name_out = 'combined_set.txt' 
-    fname_out = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
-    fname_out += 'AUD_Resources/Start_Sets/'
-    fname_out += name_out
-    with open(fname_out, 'w') as writer:
-        for ele in combined_gene_set:
-            writer.write(str(ele) + '\n')
+    
+    if(write):
+        name_out = 'combined_set.txt' 
+        fname_out = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
+        fname_out += 'AUD_Resources/Start_Sets/'
+        fname_out += name_out
+        with open(fname_out, 'w') as writer:
+            for ele in combined_gene_set:
+                writer.write(str(ele) + '\n')
+    else:
+        return combined_gene_set
             
 def combine_gene_sets_intersection(set_names:list):
     # This function takes the listed gene sets and returns their intersection.
@@ -592,6 +638,52 @@ def combine_gene_sets_intersection(set_names:list):
         genesets.append(current_set)
         
     return genesets[0] & genesets[1]
+
+def compare_remma_results(anno_file1:str, anno_file2:str, gene_range_file:str,
+                          gene_range_file2:str, pval_cutoff:float):
+    # Compare remma results
+
+    results1 = process_remma_results(anno_file1, gene_range_file, None, False, pval_cutoff)
+    results2 = process_remma_results(anno_file2, gene_range_file2, None, False, pval_cutoff)
+    
+    print(len(results1))
+    print(len(results2))
+    
+    #print(results1[0:20])
+    #print(results2[0:20])
+
+    inter_counter = 0
+    pos_differences = []
+
+    counter = 0
+    pos1 = 1
+    for tup in results1:
+        # if(counter == 400):
+        #     break
+        snp_pair = tup[0]
+        pos2 = 1
+        for tup2 in results2:
+            if(snp_pair == tup2[0]):
+                inter_counter += 1
+                pos_differences.append(pos1-pos2)
+                pos2 = 1
+                break
+            pos2 += 1
+        pos1 += 1
+        counter += 1
+            
+    print(inter_counter)
+
+    abs_avg_pos_diff = 0
+    accum = 0
+    counter = 1
+    for pos_diff in pos_differences:
+        accum += abs(pos_diff)
+        counter += 1
+        # if(counter > 300):
+        #     break
+    abs_avg_pos_diff = accum/len(pos_differences)
+    print(abs_avg_pos_diff)
 
 def gene_hancer_expansion2(reg_elements_fname:str, score_filter:float = 0):
     # This function expands a list of regulatory elements into a list of genes 
@@ -634,10 +726,10 @@ def gene_hancer_expansion2(reg_elements_fname:str, score_filter:float = 0):
                     i += 1
                     
     
-    print(expanded_set_ids)
+    return expanded_set_ids
 
-def gene_hancer_expansion(set_name:str, score_filter:float = 0):
-    # This function returns all the genes that regulate the expression of 
+def gene_hancer_expansion(set_name:str, score_filter:float = 0, write:bool = True):
+    # This function returns all the regulatory elements that regulate the expression of 
     # genes present within the gene_set. 
     expanded_set_ids = set([])
     
@@ -665,10 +757,15 @@ def gene_hancer_expansion(set_name:str, score_filter:float = 0):
             temp = temp.split(';')
             genehancer_id = temp[0][14:]
             
-            gene_name = temp[1][15:]
-            score = temp[2][6:]
-            if(gene_name in gene_list and float(score) > score_filter):
-                expanded_set_ids.add(genehancer_id)
+            i = 1 
+            while i < len(temp):
+                
+                gene_name = temp[i][15:]
+                score = temp[i+1][6:]
+                if(gene_name in gene_list and float(score) > score_filter):
+                    expanded_set_ids.add(genehancer_id)
+                    
+                i += 2
             row_num += 1
     
     # Now we need to convert the genehancer ids into loci
@@ -681,20 +778,23 @@ def gene_hancer_expansion(set_name:str, score_filter:float = 0):
             if(row[3] in expanded_set_ids):
                 to_write.append(row)
     
-    # Write out the loci of regulatory elements
-    name_out = set_name + '_genehancer_ranges_score' + str(score_filter) + '.txt' 
-    fname_out = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
-    fname_out += 'AUD_Resources/Start_Sets/Expanded_Ranges/'
-    fname_out += name_out
-    with open(fname_out, 'w') as writer:
-        for line in to_write:
-            for ele in line:
-                writer.write(str(ele) + ' ')
-            writer.write('\n')
+    if(write):
+        # Write out the loci of regulatory elements
+        name_out = set_name + '_genehancer_ranges_score' + str(score_filter) + '.txt' 
+        fname_out = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
+        fname_out += 'AUD_Resources/Start_Sets/Expanded_Ranges/'
+        fname_out += name_out
+        with open(fname_out, 'w') as writer:
+            for line in to_write:
+                for ele in line:
+                    writer.write(str(ele) + ' ')
+                writer.write('\n')
+    else:
+        return to_write
                 
 
 def bio_filter_stringdb(set_name:str, score_filter:int, exp_score_filter:float = 0,
-                        db_score_filter:float = 0, bool_oper:str = 'or'):
+                        db_score_filter:float = 0, bool_oper:str = 'or', write:bool = True):
     
     # Note we are only expanding the original set of genes/proteins using their direct 
     # neighbors. Currently there is a database, experimental, and overall score requirement 
@@ -780,7 +880,9 @@ def bio_filter_stringdb(set_name:str, score_filter:int, exp_score_filter:float =
             raise ValueError('Error.')
             
     print("Number of genes in the starting gene set: ", len(gene_list))
+    #print(gene_list)
     print("Number of genes that mapped within STRING database: ", print(len(string_start_set)))
+    #print(string_start_set)
     
     
     output_format = "tsv-no-header"
@@ -839,7 +941,8 @@ def bio_filter_stringdb(set_name:str, score_filter:int, exp_score_filter:float =
             #print("\t".join([query_name, partner_name, exp_score,db_score, combined_score]))
             expanded_set.add(partner_name)
     
-    print(len(expanded_set))
+    #print(len(expanded_set))
+    #print(expanded_set)
     for gene in gene_list:
         if(gene not in expanded_set):
             print("ERROR!")
@@ -878,12 +981,11 @@ def bio_filter_stringdb(set_name:str, score_filter:int, exp_score_filter:float =
         if (gene not in to_write_genes):
             missing_genes.append(gene)
             
-    print(missing_genes)
+    #print(missing_genes)
             
     num_missing_genes = len(missing_genes)
-    print("Ratio of missing genes/proteins to all of genes/proteins in expanded set:")
     ratio = num_missing_genes / len(expanded_set)
-    print(ratio)
+    print("Ratio of missing genes/proteins to all of genes/proteins in expanded set:", ratio)
     if(ratio > 0.1):
         print(missing_genes)
         raise ValueError("The number of missing genes/proteins is larger than 10% of expanded set.")
@@ -891,56 +993,251 @@ def bio_filter_stringdb(set_name:str, score_filter:int, exp_score_filter:float =
     
     # Output start set name, required overall score, all sub_scores used, and number 
     # of expansions performed for each starting gene. 
-    if(db_score_filter == 0 and exp_score_filter == 0):
-        name_out = set_name + '_' + 'score' + str(score_filter) + '_db_exp_1_ranges.txt' 
+    if(write):
+        if(db_score_filter == 0 and exp_score_filter == 0):
+            name_out = set_name + '_' + 'score' + str(score_filter) + '_db_exp_1_ranges.txt' 
+        else:
+            name_out = set_name + '_' + 'score' + str(score_filter) + '_db'
+            name_out += str(db_score_filter) + '_' + bool_oper + '_exp' + str(exp_score_filter) +'_1_ranges.txt' 
+        fname_out = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
+        fname_out += 'AUD_Resources/Start_Sets/Expanded_Ranges/'
+        fname_out += name_out
+        with open(fname_out, 'w') as writer:
+            for line in to_write:
+                for ele in line:
+                    writer.write(str(ele) + ' ')
+                writer.write('\n')
     else:
-        name_out = set_name + '_' + 'score' + str(score_filter) + '_db'
-        name_out += str(db_score_filter) + '_' + bool_oper + '_exp' + str(exp_score_filter) +'_1_ranges.txt' 
-    fname_out = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
-    fname_out += 'AUD_Resources/Start_Sets/Expanded_Ranges/'
-    fname_out += name_out
-    with open(fname_out, 'w') as writer:
-        for line in to_write:
-            for ele in line:
-                writer.write(str(ele) + ' ')
-            writer.write('\n')
+        return to_write
 
 
 class TestBioFilterCodeBase(unittest.TestCase):  
     
+    def test_process_remma_results(self):
+        
+    
+    def test_convert_plink_raw_to_simpleM(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        fname = indir + 'Test.raw'
+        convert_plink_raw_to_simpleM(fname, '\t')
+        
+        expected_rows = [['0','0','0','0','0','0','0','0','0'], 
+                         ['0', '0', '1', '0', '0', '0', '0', '1', '0'],
+                         ['0','0','0','0','0','0','0','0','0'],
+                         ['1','0','0','0','0','0','0','0','1']]
+        
+        
+        fname2 = indir + 'Test_simpleM.txt'
+        with open(fname2) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=' ')
+            counter = 0
+            for row in csv_reader:
+                #print(row)
+                self.assertEqual(row, expected_rows[counter])
+                counter += 1
+    
+    def test_build_ucsc_gene_ranges_file(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
+        fname1 = indir + 'ucsc-hg19-mini.txt'
+        fname2 = indir + 'ucsc-hg19-kgXref.txt'
+        a1 = build_ucsc_gene_ranges_file(fname1, fname2, False)
+        v1 = a1['DDX11L1']
+        v2 = a1['WASH7P']
+        v3 = a1['GPX6']
+        self.assertEqual(v1[0], 'chr1')
+        self.assertEqual(v1[1], '11873')
+        self.assertEqual(v1[2], '14409')
+        
+        self.assertEqual(v2[0], 'chr1')
+        self.assertEqual(v2[1], '14361')
+        self.assertEqual(v2[2], '29961')
+        
+        self.assertEqual(v3[0], 'chr6')
+        self.assertEqual(v3[1], '731')
+        self.assertEqual(v3[2], '28483570')
+    
+    def test_combine_gene_sets(self):
+        a1 = combine_gene_sets(['Test2', 'Test4'], False)
+        self.assertEqual(len(a1), 6)
+        self.assertTrue('GHRL' in a1)
+        self.assertTrue('REN' in a1)
+        self.assertTrue('SNORA54' in a1)
+        self.assertTrue('CDH10' in a1)
+        self.assertTrue('ADH4' in a1)
+        self.assertTrue('CREN' in a1)
+    
+    def test_combine_gene_sets_intersection(self):
+        a1 = combine_gene_sets_intersection(['Test', 'Test2'])
+        self.assertEqual(len(a1), 0)
+        
+        a1 = combine_gene_sets_intersection(['Test', 'Test4'])
+        self.assertEqual(len(a1), 1)
+        self.assertTrue('GHRL' in a1)
+        
+        a1 = combine_gene_sets_intersection(['Test2', 'Test4'])
+        self.assertEqual(len(a1), 1)
+        self.assertTrue('SNORA54' in a1)
+        
+    
+    def test_gene_hancer_expansion2(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/'
+        fname = indir + 'test3.txt'
+        a1 = gene_hancer_expansion2(fname, 250)
+        self.assertEqual(len(a1), 4)
+        self.assertTrue('GHRL' in a1)
+        self.assertTrue('piR-35162' in a1)
+        self.assertTrue('piR-50822' in a1)
+        self.assertTrue('lnc-GHRL-3-002' in a1)
+    
+    def test_gene_hancer_expansion(self):
+        a1 = gene_hancer_expansion('Test', 25, False)
+        self.assertEqual(a1[0][3], 'GH03J010290')
+        self.assertEqual(a1[1][3], 'GH03J010292')
+        self.assertEqual(a1[2][3], 'GH03J010291')
+        self.assertEqual(a1[3][3], 'GH03J010304')
+        
+        a1 = gene_hancer_expansion('Test2', 250, False)
+        self.assertEqual(a1[0][3], 'GH01J204166')
+        self.assertEqual(a1[1][3], 'GH01J204189')
+        self.assertEqual(a1[2][3], 'GH11J002965')
+        self.assertEqual(a1[3][3], 'GH05J024644')
+    
+    def test_bio_filter_stringdb(self):
+        gene_set = bio_filter_stringdb('Test', 900, 0.01, 0.01, 'and', False)
+        self.assertEqual(gene_set[0], ['3', 10325433, 10336631, 'GHRL'])
+        self.assertEqual(gene_set[1], ['3', 172159080, 172168246, 'GHSR'])
+        
+    
     def test_generate_all_assosciated_transcript_ranges(self):
-        full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
-        gene_range_file = full_dir + 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt'
-        incorrect_genes = verify_gene_ranges(gene_range_file)
         main_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
         gene_transc_map = main_dir + 'ucsc-hg19-kgXref.txt'
         transc_range_file = main_dir + 'ucsc-hg19.txt'
         alt_gene_ranges = generate_all_assosciated_transcript_ranges(['MICB'], gene_transc_map, transc_range_file, main_dir)
         
+        self.assertEqual(alt_gene_ranges[0][0], ('chr6', (31462657, 31478901), 'MICB'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr6', (2461722, 2821820), 'MICB_ALT'))
+        self.assertEqual(alt_gene_ranges[0][2], ('chr6', (2842420, 2858656), 'MICB_ALT2'))
+        self.assertEqual(alt_gene_ranges[0][3], ('chr6', (2972327, 2988570), 'MICB_ALT3'))
+        self.assertEqual(len(alt_gene_ranges[0]), 4)
+        
+        alt_gene_ranges = generate_all_assosciated_transcript_ranges(['FLOT1'], gene_transc_map, transc_range_file, main_dir)
+        self.assertEqual(alt_gene_ranges[0][0], ('chr6', (1988442, 2004112), 'FLOT1'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr6', (2007152, 2009922), 'FLOT1_ALT'))
+        self.assertEqual(alt_gene_ranges[0][2], ('chr6', (2077393, 2090996), 'FLOT1_ALT2'))
+        self.assertEqual(alt_gene_ranges[0][3], ('chr6', (2043604, 2058547), 'FLOT1_ALT3'))
+        self.assertEqual(alt_gene_ranges[0][4], ('chr6', (2207576, 2222522), 'FLOT1_ALT4'))
+        self.assertEqual(alt_gene_ranges[0][5], ('chr6', (2027817, 2042770), 'FLOT1_ALT5'))
+        self.assertEqual(alt_gene_ranges[0][6], ('chr6', (30695510, 30710453), 'FLOT1_ALT6'))
+        self.assertEqual(len(alt_gene_ranges[0]), 7)
+        
+        alt_gene_ranges = generate_all_assosciated_transcript_ranges(['MICA'], gene_transc_map, transc_range_file, main_dir)
+        self.assertEqual(alt_gene_ranges[0][0], ('chr6', (2661006, 2676634), 'MICA'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr6', (2701358, 2817998), 'MICA_ALT'))
+        self.assertEqual(alt_gene_ranges[0][2], ('chr6', (31367560, 31383090), 'MICA_ALT2'))
+        self.assertEqual(alt_gene_ranges[0][3], ('chr6', (2880256, 2984748), 'MICA_ALT3'))
+        self.assertEqual(len(alt_gene_ranges[0]), 4)
+        
+        alt_gene_ranges = generate_all_assosciated_transcript_ranges(['NSF'], gene_transc_map, transc_range_file, main_dir)
+        self.assertEqual(alt_gene_ranges[0][0], ('chr17', (44668034, 44834828), 'NSF'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr17', (266211, 380618), 'NSF_ALT'))
+        self.assertEqual(len(alt_gene_ranges[0]), 2)
+        
+        alt_gene_ranges = generate_all_assosciated_transcript_ranges(['GABBR1'], gene_transc_map, transc_range_file, main_dir)
+        self.assertEqual(alt_gene_ranges[0][0], ('chr6', (826390, 904496), 'GABBR1'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr6', (29523388, 29600962), 'GABBR1_ALT'))
+        self.assertEqual(alt_gene_ranges[0][2], ('chr6', (1042198, 1119772), 'GABBR1_ALT2'))
+        self.assertEqual(len(alt_gene_ranges[0]), 3)
+        
+        alt_gene_ranges = generate_all_assosciated_transcript_ranges(['HLA-E'], gene_transc_map, transc_range_file, main_dir)
+        self.assertEqual(alt_gene_ranges[0][0], ('chr6', (1789472, 1794272), 'HLA-E'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr6', (1805260, 1810060), 'HLA-E_ALT'))
+        self.assertEqual(alt_gene_ranges[0][2], ('chr6', (1839046, 1843846), 'HLA-E_ALT2'))
+        self.assertEqual(alt_gene_ranges[0][3], ('chr6', (30457182, 30461982), 'HLA-E_ALT3'))
+        self.assertEqual(alt_gene_ranges[0][4], ('chr6', (1969246, 1974046), 'HLA-E_ALT4'))
+        self.assertEqual(alt_gene_ranges[0][5], ('chr6', (1750097, 1755622), 'HLA-E_ALT5'))
+        self.assertEqual(len(alt_gene_ranges[0]), 6)
+        
+        alt_gene_ranges = generate_all_assosciated_transcript_ranges(['TUBB'], gene_transc_map, transc_range_file, main_dir)
+        self.assertEqual(alt_gene_ranges[0][0], ('chr6', (2036250, 2041289), 'TUBB'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr6', (2020463, 2025502), 'TUBB_ALT'))
+        self.assertEqual(alt_gene_ranges[0][2], ('chr6', (30688156, 30693195), 'TUBB_ALT2'))
+        self.assertEqual(alt_gene_ranges[0][3], ('chr6', (1999798, 2004837), 'TUBB_ALT3'))
+        self.assertEqual(alt_gene_ranges[0][4], ('chr6', (2070039, 2075078), 'TUBB_ALT4'))
+        self.assertEqual(alt_gene_ranges[0][5], ('chr6', (1981087, 1986853), 'TUBB_ALT5'))
+        self.assertEqual(alt_gene_ranges[0][6], ('chr6', (2200224, 2205263), 'TUBB_ALT6'))
+        self.assertEqual(len(alt_gene_ranges[0]), 7)
+        
+        alt_gene_ranges = generate_all_assosciated_transcript_ranges(['LTA'], gene_transc_map, transc_range_file, main_dir)
+        self.assertEqual(alt_gene_ranges[0][0], ('chr6', (2919579, 2921806), 'LTA'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr6', (2833511, 2835738), 'LTA_ALT'))
+        self.assertEqual(alt_gene_ranges[0][2], ('chr6', (31539875, 31542100), 'LTA_ALT2'))
+        self.assertEqual(alt_gene_ranges[0][3], ('chr6', (2870676, 2872901), 'LTA_ALT3'))
+        self.assertEqual(alt_gene_ranges[0][4], ('chr6', (2825414, 2827641), 'LTA_ALT4'))
+        self.assertEqual(alt_gene_ranges[0][5], ('chr6', (3049491, 3051716), 'LTA_ALT5'))
+        self.assertEqual(alt_gene_ranges[0][6], ('chr6', (2882759, 2884984), 'LTA_ALT6'))
+        self.assertEqual(len(alt_gene_ranges[0]), 7)
+        
+        alt_gene_ranges = generate_all_assosciated_transcript_ranges(['HSPA1B'], gene_transc_map, transc_range_file, main_dir)
+        self.assertEqual(alt_gene_ranges[0][0], ('chr6', (3305093, 3307616), 'HSPA1B'))
+        self.assertEqual(alt_gene_ranges[0][1], ('chr6', (31783319, 31785360), 'HSPA1B_ALT'))
+        self.assertEqual(alt_gene_ranges[0][2], ('chr6', (3081098, 3083618), 'HSPA1B_ALT2'))
+        self.assertEqual(alt_gene_ranges[0][3], ('chr6', (31795511, 31798031), 'HSPA1B_ALT3'))
+        self.assertEqual(alt_gene_ranges[0][4], ('chr6', (3110275, 3112789), 'HSPA1B_ALT4'))
+        self.assertEqual(alt_gene_ranges[0][5], ('chr6', (3098080, 3100478), 'HSPA1B_ALT5'))
+        self.assertEqual(alt_gene_ranges[0][6], ('chr6', (3292899, 3295297), 'HSPA1B_ALT6'))
+        self.assertEqual(alt_gene_ranges[0][7], ('chr6', (3068906, 3071304), 'HSPA1B_ALT7'))
+        self.assertEqual(alt_gene_ranges[0][8], ('chr6', (3076966, 3079364), 'HSPA1B_ALT8'))
+        self.assertEqual(alt_gene_ranges[0][9], ('chr6', (3089162, 3091686), 'HSPA1B_ALT9'))
+        self.assertEqual(len(alt_gene_ranges[0]), 10)
+        
 def test_suite():
     # Unit Tests
     unit_test_suite = unittest.TestSuite()
     unit_test_suite.addTest(TestBioFilterCodeBase('test_generate_all_assosciated_transcript_ranges'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_bio_filter_stringdb'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_gene_hancer_expansion'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_gene_hancer_expansion2'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_combine_gene_sets_intersection'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_combine_gene_sets'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_build_ucsc_gene_ranges_file'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_convert_plink_raw_to_simpleM'))
     
     runner = unittest.TextTestRunner()
     runner.run(unit_test_suite)
 
+test_suite()
 
-# Generate remma scripts
+# CORRECTING GENE LOCATIONS FOR COMPLEX GENES (THAT HAVE MULTIPLE ALTERNATIVE NON OVERLAPPING LOCATIONS)
+'''
+full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+gene_range_file = full_dir + 'Combined_Set_score900_db001_and_exp001_1_ranges.txt'
+incorrect_genes = verify_gene_ranges(gene_range_file)
+print(incorrect_genes)
+
+main_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
+gene_transc_map = main_dir + 'ucsc-hg19-kgXref.txt'
+transc_range_file = main_dir + 'ucsc-hg19.txt'
+alt_gene_ranges = generate_all_assosciated_transcript_ranges(incorrect_genes, gene_transc_map, transc_range_file, main_dir, write=True)
+'''
+
+# GENERATE REMMA SCRIPTS
 # out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Scripts/'
-# generate_remma_scripts(out_dir, 'Disgenet_score900_db_exp_1', num_jobs = 96, 
-#                        p_cut_off = 1e-11)
+# generate_remma_scripts(out_dir, 'Combined_Fixed_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001',
+#                        grm_type = 'dd', num_jobs = 256, p_cut_off = 1e-5)
     
-# fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Bio_Filter_Results/'
-# fname += 'NA3_Combined_Strict_Set_score900_db09_exp04_1_regions_maf001_qc3_reg_merged.txt'
-# gene_hancer_expansion2(fname, 10.0)          
+# FOLLOW UP REGULATION ANALYSIS
+# fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Strict_Set_Biclustering/'
+# fname += 'biclustering_results_regulatory_elements.txt'
+# genes = gene_hancer_expansion2(fname, 10.0)     
+# print(genes)     
 
-# print(len(combine_gene_sets_intersection(['Combined_Strict_Set', 'Combined_Set_ALL'])))
-# combine_gene_sets(['AI_AUD_Genes', 'Diseases_AUD_Genes','Disgenet_AUD_Genes_Trimmed_0_3_GDA_Score',
-#                    'Disgenet_AD_Genes_Trimmed_0_3_GDA_Score', 'Kegg_AD_Genes', 'Mala_AD_Genes',
-#                    'Mala_AUD_Genes', 'MVP_AUD_AUDIT_2019_Genes', 'MVP_AUD_AUDIT_2023_Genes',
-#                    'Molecular_Targets_Ethanol_Broad'])
+# print(combine_gene_sets(['AI_AUD_Genes', 'Diseases_AUD_Genes', 'Disgenet_AUD_Genes_Trimmed_0_3_GDA_Score',
+#                          'Disgenet_AD_Genes_Trimmed_0_3_GDA_Score', 'Kegg_AD_Genes', 'Mala_AD_Genes',
+#                          'Mala_AUD_Genes', 'MVP_AUD_AUDIT_2019_Genes', 'MVP_AUD_AUDIT_2023_Genes', 
+#                          'Molecular_Targets_Ethanol_Broad']
+#                         , False))
 
+# EXPAND CORE GENE SET USING STRINGDB AND GENEHANCER
 # bio_filter_stringdb('Combined_Set', 900, 0.01, 0.01, 'and')
 # gene_hancer_expansion('Combined_Set', 25)
 # full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
@@ -948,56 +1245,58 @@ def test_suite():
 #                          full_dir + 'Combined_Set_genehancer_ranges_score25_formatted.txt')
 
 
-# Compare remma results
+# CONVERT PLINK FILE INTO simpleM FILE
+# full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
+# convert_plink_raw_to_simpleM(full_dir + 'NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.raw', ' ')
+
+
+# COMPARE SIMILARITY OF TWO REMMA ANNO RESULT FILES
 '''
-full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
-full_dir1 = full_dir + 'Bio_Filter_Results/Additional_Results/'
-full_dir2 = full_dir + 'Bio_Filter_Results/'
+anno_file1 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
+anno_file1 += 'epiDD_dd_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
 
-results1 = process_remma_results(full_dir1, 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3_multibed.anno', False)
-results2 = process_remma_results(full_dir2, 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_maf001_qc3.anno', False)
+anno_file2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
+anno_file2 += 'epiDD_dd_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
 
-inter_counter = 0
-pos_differences = []
+gene_range_file = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+gene_range_file += 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt'
 
-counter = 0
-pos1 = 1
-for tup in results1:
-    # if(counter == 400):
-    #     break
-    snp_pair = tup[0]
-    pos2 = 1
-    for tup2 in results2:
-        if(snp_pair == tup2[0]):
-            inter_counter += 1
-            pos_differences.append(pos1-pos2)
-            pos2 = 1
-            break
-        pos2 += 1
-    pos1 += 1
-    counter += 1
-        
-print(inter_counter)
+gene_range_file2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+gene_range_file2 += 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
 
-abs_avg_pos_diff = 0
-accum = 0
-counter = 1
-for pos_diff in pos_differences:
-    accum += abs(pos_diff)
-    counter += 1
-    # if(counter > 300):
-    #     break
-abs_avg_pos_diff = accum/len(pos_differences)
-print(abs_avg_pos_diff)
+compare_remma_results(anno_file1, anno_file2, gene_range_file, gene_range_file2, 1e-7)
 '''
 
-full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
-gene_range_file = full_dir + 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt'
-incorrect_genes = verify_gene_ranges(gene_range_file)
-main_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/'
-gene_transc_map = main_dir + 'ucsc-hg19-kgXref.txt'
-transc_range_file = main_dir + 'ucsc-hg19.txt'
-generate_all_assosciated_transcript_ranges(['MICB'], gene_transc_map, transc_range_file, main_dir)
+# ANNOTATE REMMA ANNO RESULT FILES
+'''
+indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
+remma_anno_file = indir + 'epiDD_dd_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
+indir2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+gene_range_file = indir2 + 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt'
+out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Set_Biclustering/'
 
-# full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Bio_Filter_Results/'
-# convert_plink_raw_to_simpleM(full_dir + 'NA3_Combined_Strict_Set_score900_db_exp_1_and_genehancer_score10_regions_qc3.raw')
+process_remma_results(remma_anno_file, gene_range_file, out_dir, True, 1e-8)
+'''
+
+# MISCELANEOUS
+'''
+snps = set()
+indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Set_Biclustering/'
+marker_file1 = 'Combined_Set_AA1_GENES.txt'
+marker_file2 = 'Combined_Set_AA2_GENES.txt'
+marker_file3 = 'Combined_Set_AA3_GENES.txt'
+marker_file4 = 'Combined_Set_AD_GENES.txt'
+marker_file5 = 'Combined_Set_DD_GENES.txt'
+
+marker_files = [indir + marker_file1, indir + marker_file2, indir + marker_file3, indir + marker_file4, indir + marker_file5]
+
+for file in marker_files:
+    with open(file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=' ')
+        for row in csv_reader:
+            # Want to make sure we do not double count SNP pairs that are listed in reverse order.
+            if((row[3], row[1]) not in snps):
+                snps.add((row[1], row[3]))
+                
+print(len(snps))
+'''
