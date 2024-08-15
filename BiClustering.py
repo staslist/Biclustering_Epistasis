@@ -915,6 +915,51 @@ def trim_intervals(sorted_intervals:list):
 
 class TestBiClusterCodeBase(unittest.TestCase):  
     
+    def test_get_msigdb_enrichment(self):
+        gene_pairs = {('ABAT', 'ACOX1'), ('CSMD1', 'DLGAP1')}
+        out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        get_msigdb_enrichment(gene_pairs, out_dir)
+        
+        fname = out_dir + 'biclustering_results_msigdb_enrichment.txt'
+        with open(fname) as msig_fname:
+            line = msig_fname.readline()
+        
+        exp_line = "('ABAT', 'ACOX1') : ['AFFAR_YY1_TARGETS_UP', "
+        exp_line += "'CARRILLOREIXACH_HEPATOBLASTOMA_VS_NORMAL_DN', 'FLECHNER_BIOPSY_KIDNEY_"
+        exp_line += "TRANSPLANT_REJECTED_VS_OK_DN', 'LEE_LIVER_CANCER_MYC_TGFA_DN', 'RODRIGUES_"
+        exp_line += "DCC_TARGETS_DN', 'RODRIGUES_THYROID_CARCINOMA_ANAPLASTIC_DN', "
+        exp_line += "'RODRIGUES_THYROID_CARCINOMA_POORLY_DIFFERENTIATED_DN']\n"
+        self.assertEqual(line, exp_line)
+    
+    def test_parse_remma_interaction_data(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        ad_anno = indir + 'epiAD_ad_NA3_Combined_Strict_Set_Brief.anno'
+        dd_anno = indir + 'epiDD_dd_NA3_Combined_Strict_Set_Brief.anno'
+        interactions = parse_remma_interaction_data([ad_anno, dd_anno], 1e-6, '1', '20')
+        
+        self.assertEqual(len(interactions), 7)
+        self.assertEqual(interactions[('1:7863293', '20:8515243')], 3.0037315721644386e-07)
+        self.assertEqual(interactions[('1:7863293', '20:8515956')], 3.0037315721644386e-07)
+        
+        self.assertEqual(interactions[('1:7865063', '20:33467717')], 8.801979806253102e-07)
+        self.assertEqual(interactions[('1:7865063', '20:33488013')], 7.014568812762179e-07)
+        self.assertEqual(interactions[('1:7865063', '20:33514465')], 7.070270435022684e-07)
+        self.assertEqual(interactions[('1:7865691', '20:33488013')], 9.85547891823227e-09)
+        self.assertEqual(interactions[('1:1725760', '20:9588420')], 7.018367391361476e-07)
+        
+    
+    def test_get_number_of_interacting_snps_in_interval(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        biclustering_file = indir + 'biclustering_results_chr1_chr5.txt'
+        bim_file = indir + 'NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.bim'
+        gene_location_file = indir + 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
+        marker_files = [indir + 'epiDD_dd_NA3_Combined_Strict_Set.anno']
+        inter_pairs_per_interval  = get_number_of_interacting_snps_in_interval(biclustering_file, bim_file, gene_location_file,
+                                                                               '1', '5', marker_files, 1e-7)
+    
+        self.assertEqual(inter_pairs_per_interval[('LHX4 ', 'PPP2R2B ')], 12)
+        self.assertEqual(inter_pairs_per_interval[('DISC1 ', 'SLIT3 ')], 5)
+        
     def test_parse_biclustering_results(self):
         indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
         marker_file1 = 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
@@ -1397,6 +1442,10 @@ def test_suite():
     unit_test_suite.addTest(TestBiClusterCodeBase('test_trim_intervals'))
     unit_test_suite.addTest(TestBiClusterCodeBase('test_initialize_matrices2'))
     unit_test_suite.addTest(TestBiClusterCodeBase('test_parse_biclustering_results'))
+    
+    unit_test_suite.addTest(TestBiClusterCodeBase('test_get_number_of_interacting_snps_in_interval'))
+    unit_test_suite.addTest(TestBiClusterCodeBase('test_parse_remma_interaction_data'))
+    unit_test_suite.addTest(TestBiClusterCodeBase('test_get_msigdb_enrichment'))
     
     runner = unittest.TextTestRunner()
     runner.run(unit_test_suite)

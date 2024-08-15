@@ -18,9 +18,11 @@ def process_remma_results(anno_fname:str, gene_range_file:str, out_dir:str,
         line_num = 0
         for row in csv_reader:
             # print(row)
-            if(line_num > 1):
+            if(line_num > 0):
                 inter_pairs[row[2] + '_' + row[9]] = float(row[18])
             line_num += 1
+    
+    #print(inter_pairs)
     
     full_dir3 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Genehancer/'
     file3 = full_dir3 + 'GeneHancer_AnnotSV_hg19_v5.18.txt'
@@ -594,16 +596,13 @@ def build_ncbi_refseq_gene_ranges_file(ncbi_refseq_file:str):
         for k,v in gene_to_loci_map.items():
             writer.write(v[0] + '\t' + v[1] + '\t' + v[2] + '\t' + k + '\n')
 
-def combine_gene_sets(set_names:list, write:bool = True):
+def combine_gene_sets(set_fnames:list, write:bool = True):
     # This function takes the listed gene sets, combines them into one (union),
     # and writes out the result into a file.
     combined_gene_set = set([])
-    for set_name in set_names:
-    
-        start_set_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/'
-        full_dir = start_set_dir + set_name + '.txt'
+    for set_fname in set_fnames:
         
-        with open(full_dir) as csv_file:
+        with open(set_fname) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter='\t')
             for row in csv_reader:
                 combined_gene_set.add(row[0])
@@ -619,18 +618,16 @@ def combine_gene_sets(set_names:list, write:bool = True):
     else:
         return combined_gene_set
             
-def combine_gene_sets_intersection(set_names:list):
+def combine_gene_sets_intersection(set_fnames:list):
     # This function takes the listed gene sets and returns their intersection.
     # Assume that two sets are provided.
-    assert(len(set_names) == 2)
+    assert(len(set_fnames) == 2)
     genesets = []
-    for set_name in set_names:
+    for set_fname in set_fnames:
     
-        start_set_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/'
-        full_dir = start_set_dir + set_name + '.txt'
         current_set = set()
         
-        with open(full_dir) as csv_file:
+        with open(set_fname) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter='\t')
             for row in csv_reader:
                 current_set.add(row[0])
@@ -646,11 +643,11 @@ def compare_remma_results(anno_file1:str, anno_file2:str, gene_range_file:str,
     results1 = process_remma_results(anno_file1, gene_range_file, None, False, pval_cutoff)
     results2 = process_remma_results(anno_file2, gene_range_file2, None, False, pval_cutoff)
     
-    print(len(results1))
-    print(len(results2))
+    #print(len(results1))
+    #print(len(results2))
     
-    #print(results1[0:20])
-    #print(results2[0:20])
+    #print(results1)
+    #print(results2)
 
     inter_counter = 0
     pos_differences = []
@@ -672,7 +669,7 @@ def compare_remma_results(anno_file1:str, anno_file2:str, gene_range_file:str,
         pos1 += 1
         counter += 1
             
-    print(inter_counter)
+    #print(inter_counter)
 
     abs_avg_pos_diff = 0
     accum = 0
@@ -683,7 +680,9 @@ def compare_remma_results(anno_file1:str, anno_file2:str, gene_range_file:str,
         # if(counter > 300):
         #     break
     abs_avg_pos_diff = accum/len(pos_differences)
-    print(abs_avg_pos_diff)
+    #print(abs_avg_pos_diff)
+    
+    return len(results1), len(results2), inter_counter, abs_avg_pos_diff
 
 def gene_hancer_expansion2(reg_elements_fname:str, score_filter:float = 0):
     # This function expands a list of regulatory elements into a list of genes 
@@ -728,18 +727,17 @@ def gene_hancer_expansion2(reg_elements_fname:str, score_filter:float = 0):
     
     return expanded_set_ids
 
-def gene_hancer_expansion(set_name:str, score_filter:float = 0, write:bool = True):
+def gene_hancer_expansion(set_fname:str, score_filter:float = 0, write:bool = True):
     # This function returns all the regulatory elements that regulate the expression of 
     # genes present within the gene_set. 
     expanded_set_ids = set([])
     
-    # Read in the gene names from the file.
-    start_set_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/'
-    full_dir = start_set_dir + set_name + '.txt'
-    
     gene_list = []
     
-    with open(full_dir) as csv_file:
+    set_name = set_fname.split('/')[-1]
+    set_name = set_name.split('.')[0]
+    
+    with open(set_fname) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter='\t')
         for row in csv_reader:
             gene_list.append(row[0])
@@ -793,7 +791,7 @@ def gene_hancer_expansion(set_name:str, score_filter:float = 0, write:bool = Tru
         return to_write
                 
 
-def bio_filter_stringdb(set_name:str, score_filter:int, exp_score_filter:float = 0,
+def bio_filter_stringdb(set_fname:str, score_filter:int, exp_score_filter:float = 0,
                         db_score_filter:float = 0, bool_oper:str = 'or', write:bool = True):
     
     # Note we are only expanding the original set of genes/proteins using their direct 
@@ -804,13 +802,12 @@ def bio_filter_stringdb(set_name:str, score_filter:int, exp_score_filter:float =
     output_format = "tsv-no-header"
     method = "get_string_ids"
     
-    # Read in the gene names from the file.
-    start_set_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/'
-    full_dir = start_set_dir + set_name + '.txt'
+    set_name = set_fname.split('/')[-1]
+    set_name = set_name.split('.')[0]
     
     gene_list = []
-    
-    with open(full_dir) as csv_file:
+    # Read in the gene names from the file.
+    with open(set_fname) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter='\t')
         for row in csv_reader:
             gene_list.append(row[0])
@@ -1013,8 +1010,103 @@ def bio_filter_stringdb(set_name:str, score_filter:int, exp_score_filter:float =
 
 class TestBioFilterCodeBase(unittest.TestCase):  
     
+    def test_compare_remma_results(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        anno_fname = indir + 'epiAA_aa1_NA3_Combined_Strict_Set.anno'
+        anno_fname2 = indir + 'epiAA_aa1_NA3_Combined_Strict_Set_Version2.anno'
+        gene_range_file = indir + 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
+    
+        len1,len2,inter_len,inter_pos_diff = compare_remma_results(anno_fname, anno_fname2, gene_range_file, gene_range_file, 1e-6)
+        self.assertEqual(len1, 19)
+        self.assertEqual(len2, 13)
+        self.assertEqual(inter_len, 11)
+        self.assertEqual(inter_pos_diff, 3)
+    
     def test_process_remma_results(self):
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        anno_fname = indir + 'epiAA_aa1_NA3_Combined_Strict_Set.anno'
+        gene_range_file = indir + 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
+        out_dir = indir 
+        s_inter_pairs = process_remma_results(anno_fname, gene_range_file, out_dir, False)
+        self.assertEqual(s_inter_pairs[0], ('1:203644787_2:139258603', 8.637281465744159e-08))
+        self.assertEqual(s_inter_pairs[1], ('1:203644787_2:139281445', 1.0936213198117784e-07))
+        self.assertEqual(s_inter_pairs[2], ('1:203644787_2:139272634', 1.7536035710515125e-07))
+        self.assertEqual(s_inter_pairs[3], ('1:203644787_2:139273675', 1.8532299828727106e-07))
+        self.assertEqual(s_inter_pairs[4], ('1:203644787_2:139269207', 2.0407664797510917e-07))
+        self.assertEqual(s_inter_pairs[5], ('1:203613278_16:24204380', 3.476346378401649e-07))
+        self.assertEqual(s_inter_pairs[6], ('1:6655053_19:49259973', 3.740458864919486e-07))
+        self.assertEqual(s_inter_pairs[7], ('1:203613278_16:24204952', 6.062679348601012e-07))
+        self.assertEqual(s_inter_pairs[8], ('1:6659505_19:49259973', 6.579214144284735e-07))
+        self.assertEqual(s_inter_pairs[9], ('1:7878634_16:8779590', 6.850095894653691e-07))
+        self.assertEqual(s_inter_pairs[10], ('1:84585123_7:113535587', 7.094366194974574e-07))
+        self.assertEqual(s_inter_pairs[11], ('1:11086439_4:162833865', 7.17974416336173e-07))
+        self.assertEqual(s_inter_pairs[12], ('1:203611497_16:24204952', 7.618112527815942e-07))
+        self.assertEqual(s_inter_pairs[13], ('1:84585123_7:113528961', 7.651883189586585e-07))
+        self.assertEqual(s_inter_pairs[14], ('1:84585123_7:113534995', 7.682257667693387e-07))
+        self.assertEqual(s_inter_pairs[15], ('1:11078312_4:162833865', 8.343361116347899e-07))
+        self.assertEqual(s_inter_pairs[16], ('1:29179181_10:123327876', 8.594065232435889e-07))
+        self.assertEqual(s_inter_pairs[17], ('1:11086439_4:162832853', 9.157410107924229e-07))
+        self.assertEqual(s_inter_pairs[18], ('1:11086439_4:162838210', 9.83544024805305e-07))
         
+        process_remma_results(anno_fname, gene_range_file, out_dir, True)
+        
+        gene_annot = indir + 'TEMPLATE1.txt'
+        with open(gene_annot) as gene_annot_file:
+            lines = gene_annot_file.readlines()
+            
+        gene_annot_expected = ['ATP2B4 1:203644787 SPOPL 2:139258603 8.637281465744159e-08\n',
+                               'ATP2B4 1:203644787 SPOPL 2:139281445 1.0936213198117784e-07\n',
+                               'ATP2B4 1:203644787 SPOPL 2:139272634 1.7536035710515125e-07\n',
+                               'ATP2B4 1:203644787 SPOPL 2:139273675 1.8532299828727106e-07\n',
+                               'ATP2B4 1:203644787 SPOPL 2:139269207 2.0407664797510917e-07\n',
+                               'ATP2B4 1:203613278 PRKCB 16:24204380 3.476346378401649e-07\n',
+                               'KLHL21 1:6655053 FGF21 19:49259973 3.740458864919486e-07\n',
+                               'ATP2B4 1:203613278 PRKCB 16:24204952 6.062679348601012e-07\n',
+                               'KLHL21 1:6659505 FGF21 19:49259973 6.579214144284735e-07\n',
+                               'PER3 1:7878634 ABAT 16:8779590 6.850095894653691e-07\n',
+                               'PRKACB 1:84585123 PPP1R3A 7:113535587 7.094366194974574e-07\n',
+                               'TARDBP 1:11086439 FSTL5 4:162833865 7.17974416336173e-07\n',
+                               'ATP2B4 1:203611497 PRKCB 16:24204952 7.618112527815942e-07\n',
+                               'PRKACB 1:84585123 PPP1R3A 7:113528961 7.651883189586585e-07\n',
+                               'PRKACB 1:84585123 PPP1R3A 7:113534995 7.682257667693387e-07\n',
+                               'TARDBP 1:11078312 FSTL5 4:162833865 8.343361116347899e-07\n',
+                               'OPRD1 1:29179181 FGFR2 10:123327876 8.594065232435889e-07\n',
+                               'TARDBP 1:11086439 FSTL5 4:162832853 9.157410107924229e-07\n',
+                               'TARDBP 1:11086439 FSTL5 4:162838210 9.83544024805305e-07\n']
+            
+        i = 0
+        for line in lines:
+            self.assertEqual(gene_annot_expected[i], line)
+            i += 1
+            
+        reg_annot = indir + 'TEMPLATE2.txt'
+        with open(gene_annot) as reg_annot_file:
+            lines = reg_annot_file.readlines()
+            
+        reg_annot_expected = ['GH01J203669 1:203644787 GH02J138500 2:139258603 8.637281465744159e-08\n',
+                              'GH01J203669 1:203644787 GH02J138514 2:139281445 1.0936213198117784e-07\n',
+                              'GH01J203669 1:203644787 GH02J138514 2:139272634 1.7536035710515125e-07\n',
+                              'GH01J203669 1:203644787 GH02J138514 2:139273675 1.8532299828727106e-07\n',
+                              'GH01J203669 1:203644787 GH02J138514 2:139269207 2.0407664797510917e-07\n',
+                              'GH01J203642 1:203613278 NOT-FOUND 16:24204380 3.476346378401649e-07\n',
+                              'GH01J006594 1:6655053 GH19J048755 19:49259973 3.740458864919486e-07\n',
+                              'GH01J203642 1:203613278 NOT-FOUND 16:24204952 6.062679348601012e-07\n',
+                              'GH01J006598 1:6659505 GH19J048755 19:49259973 6.579214144284735e-07\n',
+                              'NOT-FOUND 1:7878634 GH16J008686 16:8779590 6.850095894653691e-07\n',
+                              'NOT-FOUND 1:84585123 NOT-FOUND 7:113535587 7.094366194974574e-07\n',
+                              'NOT-FOUND 1:11086439 NOT-FOUND 4:162833865 7.17974416336173e-07\n',
+                              'NOT-FOUND 1:203611497 NOT-FOUND 16:24204952 7.618112527815942e-07\n',
+                              'NOT-FOUND 1:84585123 NOT-FOUND 7:113528961 7.651883189586585e-07\n',
+                              'NOT-FOUND 1:84585123 NOT-FOUND 7:113534995 7.682257667693387e-07\n',
+                              'NOT-FOUND 1:11078312 NOT-FOUND 4:162833865 8.343361116347899e-07\n',
+                              'NOT-FOUND 1:29179181 GH10J121563 10:123327876 8.594065232435889e-07\n',
+                              'NOT-FOUND 1:11086439 NOT-FOUND 4:162832853 9.157410107924229e-07\n',
+                              'NOT-FOUND 1:11086439 NOT-FOUND 4:162838210 9.83544024805305e-07\n']
+    
+        i = 0
+        for line in lines:
+            self.assertEqual(gene_annot_expected[i], line)
+            i += 1
     
     def test_convert_plink_raw_to_simpleM(self):
         indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
@@ -1057,7 +1149,11 @@ class TestBioFilterCodeBase(unittest.TestCase):
         self.assertEqual(v3[2], '28483570')
     
     def test_combine_gene_sets(self):
-        a1 = combine_gene_sets(['Test2', 'Test4'], False)
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        fname2 = indir + 'Test2.txt'
+        fname4 = indir + 'Test4.txt'
+        a1 = combine_gene_sets([fname2, fname4], False)
+        
         self.assertEqual(len(a1), 6)
         self.assertTrue('GHRL' in a1)
         self.assertTrue('REN' in a1)
@@ -1067,21 +1163,26 @@ class TestBioFilterCodeBase(unittest.TestCase):
         self.assertTrue('CREN' in a1)
     
     def test_combine_gene_sets_intersection(self):
-        a1 = combine_gene_sets_intersection(['Test', 'Test2'])
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        fname1 = indir + 'Test.txt'
+        fname2 = indir + 'Test2.txt'
+        fname4 = indir + 'Test4.txt'
+        
+        a1 = combine_gene_sets_intersection([fname1, fname2])
         self.assertEqual(len(a1), 0)
         
-        a1 = combine_gene_sets_intersection(['Test', 'Test4'])
+        a1 = combine_gene_sets_intersection([fname1, fname4])
         self.assertEqual(len(a1), 1)
         self.assertTrue('GHRL' in a1)
         
-        a1 = combine_gene_sets_intersection(['Test2', 'Test4'])
+        a1 = combine_gene_sets_intersection([fname2, fname4])
         self.assertEqual(len(a1), 1)
         self.assertTrue('SNORA54' in a1)
         
     
     def test_gene_hancer_expansion2(self):
-        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/'
-        fname = indir + 'test3.txt'
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        fname = indir + 'Test3.txt'
         a1 = gene_hancer_expansion2(fname, 250)
         self.assertEqual(len(a1), 4)
         self.assertTrue('GHRL' in a1)
@@ -1090,20 +1191,27 @@ class TestBioFilterCodeBase(unittest.TestCase):
         self.assertTrue('lnc-GHRL-3-002' in a1)
     
     def test_gene_hancer_expansion(self):
-        a1 = gene_hancer_expansion('Test', 25, False)
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        fname = indir + 'Test.txt'
+        
+        a1 = gene_hancer_expansion(fname, 25, False)
         self.assertEqual(a1[0][3], 'GH03J010290')
         self.assertEqual(a1[1][3], 'GH03J010292')
         self.assertEqual(a1[2][3], 'GH03J010291')
         self.assertEqual(a1[3][3], 'GH03J010304')
         
-        a1 = gene_hancer_expansion('Test2', 250, False)
+        fname = indir + 'Test2.txt'
+        
+        a1 = gene_hancer_expansion(fname, 250, False)
         self.assertEqual(a1[0][3], 'GH01J204166')
         self.assertEqual(a1[1][3], 'GH01J204189')
         self.assertEqual(a1[2][3], 'GH11J002965')
         self.assertEqual(a1[3][3], 'GH05J024644')
     
     def test_bio_filter_stringdb(self):
-        gene_set = bio_filter_stringdb('Test', 900, 0.01, 0.01, 'and', False)
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        fname = indir + 'Test.txt'
+        gene_set = bio_filter_stringdb(fname, 900, 0.01, 0.01, 'and', False)
         self.assertEqual(gene_set[0], ['3', 10325433, 10336631, 'GHRL'])
         self.assertEqual(gene_set[1], ['3', 172159080, 172168246, 'GHSR'])
         
@@ -1201,6 +1309,8 @@ def test_suite():
     unit_test_suite.addTest(TestBioFilterCodeBase('test_combine_gene_sets'))
     unit_test_suite.addTest(TestBioFilterCodeBase('test_build_ucsc_gene_ranges_file'))
     unit_test_suite.addTest(TestBioFilterCodeBase('test_convert_plink_raw_to_simpleM'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_process_remma_results'))
+    unit_test_suite.addTest(TestBioFilterCodeBase('test_compare_remma_results'))
     
     runner = unittest.TextTestRunner()
     runner.run(unit_test_suite)
