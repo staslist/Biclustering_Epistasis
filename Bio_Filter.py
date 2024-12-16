@@ -178,7 +178,7 @@ def generate_remma_scripts(out_dir:str, filter_type:str, comp_type:str = 'approx
                     writer.write('from gmat.remma.remma_epiDD import remma_epiDD_approx_parallel\n')
             
             writer.write('# Step 1: Calculate the genomic relationship matrix\n')
-            writer.write("home_dir = '/gpfs/group/home/slistopad/REMMA/data/native_american/'\n")
+            writer.write("home_dir = '***ADD YOUR DIRECTORY HERE***'\n")
             writer.write("bed_file = home_dir + '" + fname_base3 + "'\n")
             if(i == 1):
                 writer.write("agmat(bed_file, home_dir + 'add_genom_rel_matrix_" + fname_base2_par1 + "')\n")

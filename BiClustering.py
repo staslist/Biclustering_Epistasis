@@ -210,7 +210,7 @@ def generate_multicpu_files(anno_files:list, bim_file:str, total_markers:int, nu
             writer.write("\tbim_file = indir + '" + str(bim_file) + "'\n")
             writer.write("\tchrom1,chrom2 = '" + chrom1 + "','" + chrom2 + "'\n")
             writer.write('\tN,n,inter_matrix,up_tri = initialize_matrices2(bim_file,marker_files, chrom1, chrom2, ' + str(pval_cutoff) + ')\n')
-            writer.write("\tout_dir = '/gpfs/group/home/slistopad/BiClustering/'\n")
+            writer.write("\tout_dir = '***ADD YOUR DIRECTORY HERE***'\n")
             writer.write('\ti_start, i_end = '+i_s+', '+i_e+'\n')
             writer.write('\tkm_results = compute_k_m_parallel(60, inter_matrix, up_tri, i_start, i_end, N, n)\n')
             writer.write('\tcompute_interval_pval_parallel(km_results, N, n, i_start, i_end, 60, out_dir, chrom1=chrom1, chrom2=chrom2)\n')
@@ -342,7 +342,7 @@ def get_number_of_interacting_snps_in_interval(biclustering_file:str, bim_file:s
 def get_msigdb_enrichment(gene_pairs:set, out_dir:str):
     #print(pairs)
     pairs_map = dict()
-    fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Pathways/c2.all.v2023.2.Hs.symbols.gmt'
+    fname = '***ADD YOUR DIRECTORY HERE***'
     with open(fname) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter='\t')
         for row in csv_reader:
