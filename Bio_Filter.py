@@ -187,7 +187,7 @@ def generate_remma_scripts(out_dir:str, filter_type:str, comp_type:str = 'approx
             writer.write("# Step 2: Estimate the variances\n")
             writer.write("add_genom_rel_matrix = home_dir + 'add_genom_rel_matrix_" + fname_base2_par1 + ".agrm.mat_fmt'\n")
             writer.write("dom_genom_rel_matrix = home_dir + 'dom_genom_rel_matrix_" + fname_base2_par1 + ".dgrm_as.mat_fmt'\n")
-            writer.write("pheno_file = home_dir + 'pheno_impute_median.ped'  # phenotypic file\n")
+            writer.write("pheno_file = home_dir + 'pheno.ped'  # phenotypic file\n")
             writer.write("ag = np.loadtxt(add_genom_rel_matrix)  # load the additive genomic relationship matrix\n")
             writer.write("dg = np.loadtxt(dom_genom_rel_matrix)\n")
             if(grm_type in ['aa1']):
@@ -1333,7 +1333,7 @@ alt_gene_ranges = generate_all_assosciated_transcript_ranges(incorrect_genes, ge
 # GENERATE REMMA SCRIPTS
 # out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Scripts/'
 # generate_remma_scripts(out_dir, 'Combined_Fixed_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001',
-#                        grm_type = 'dd', num_jobs = 256, p_cut_off = 1e-5)
+#                        grm_type = 'aa1', num_jobs = 256, p_cut_off = 1e-5)
     
 # FOLLOW UP REGULATION ANALYSIS
 # fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Strict_Set_Biclustering/'
@@ -1363,40 +1363,44 @@ alt_gene_ranges = generate_all_assosciated_transcript_ranges(incorrect_genes, ge
 # COMPARE SIMILARITY OF TWO REMMA ANNO RESULT FILES
 '''
 anno_file1 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
-anno_file1 += 'epiDD_dd_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
+anno_file1 += 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Fixed_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
 
 anno_file2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
-anno_file2 += 'epiDD_dd_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
+anno_file2 += 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Fixed_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3_pheno.anno'
+#anno_file2 += 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
 
 gene_range_file = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
 gene_range_file += 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt'
 
-gene_range_file2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
-gene_range_file2 += 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
+#gene_range_file2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+#gene_range_file2 += 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
 
-compare_remma_results(anno_file1, anno_file2, gene_range_file, gene_range_file2, 1e-7)
+one,two,three,four = compare_remma_results(anno_file1, anno_file2, gene_range_file, gene_range_file, 1e-8)
+print(one)
+print(two)
+print(three)
+print(four)
 '''
-
 # ANNOTATE REMMA ANNO RESULT FILES
-'''
-indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
-remma_anno_file = indir + 'epiDD_dd_approx_parallel_merged_NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
-indir2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
-gene_range_file = indir2 + 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt'
-out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Set_Biclustering/'
 
-process_remma_results(remma_anno_file, gene_range_file, out_dir, True, 1e-8)
-'''
+# indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
+# remma_anno_file = indir + 'epiDD_dd_approx_parallel_merged_NA3_Combined_Fixed_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.anno'
+# indir2 = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/AUD_Resources/Start_Sets/Expanded_Ranges/'
+# gene_range_file = indir2 + 'Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_ranges.txt'
+# out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Fixed_Set_Biclustering/'
+
+# process_remma_results(remma_anno_file, gene_range_file, out_dir, True, 1e-8)
+
 
 # MISCELANEOUS
-'''
+
 snps = set()
-indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Set_Biclustering/'
-marker_file1 = 'Combined_Set_AA1_GENES.txt'
-marker_file2 = 'Combined_Set_AA2_GENES.txt'
-marker_file3 = 'Combined_Set_AA3_GENES.txt'
-marker_file4 = 'Combined_Set_AD_GENES.txt'
-marker_file5 = 'Combined_Set_DD_GENES.txt'
+indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Fixed_Set_Biclustering/'
+marker_file1 = 'Combined_Fixed_Set_AA1_GENES.txt'
+marker_file2 = 'Combined_Fixed_Set_AA2_GENES.txt'
+marker_file3 = 'Combined_Fixed_Set_AA3_GENES.txt'
+marker_file4 = 'Combined_Fixed_Set_AD_GENES.txt'
+marker_file5 = 'Combined_Fixed_Set_DD_GENES.txt'
 
 marker_files = [indir + marker_file1, indir + marker_file2, indir + marker_file3, indir + marker_file4, indir + marker_file5]
 
@@ -1409,4 +1413,3 @@ for file in marker_files:
                 snps.add((row[1], row[3]))
                 
 print(len(snps))
-'''

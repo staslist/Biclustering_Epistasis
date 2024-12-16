@@ -67,7 +67,7 @@ circle.figure
 '''
 
 #linkplot
-indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Fixed_Set_Biclustering/'
+indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Fixed2_Set_Biclustering/'
 values_all   = [] 
 arcdata_dict = collections.defaultdict(dict)
 with open(indir + "biclustering_results_all.txt") as f:

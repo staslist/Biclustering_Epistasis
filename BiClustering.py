@@ -22,6 +22,59 @@ from numba import jit
 
 # For tested interaction matrix, assume that every interaction has been tested (exhaustive algorithm)
 
+def merge_list(input_list:list):
+    output = []
+    eliminated_indeces = set()
+    outer_index = 0
+    while outer_index < len(input_list):
+        if(outer_index in eliminated_indeces):
+            outer_index += 1 
+            continue
+        
+        #to_merge_indeces = []
+        current_set = input_list[outer_index]
+        inner_index = 0 
+        while inner_index < len(input_list):
+            if(inner_index in eliminated_indeces):
+                inner_index += 1
+                continue
+            
+            if(input_list[outer_index] == input_list[inner_index]):
+                inner_index += 1
+                continue
+            
+            if(len(input_list[outer_index].intersection(input_list[inner_index])) > 0):
+                #to_merge_indeces.append(inner_index)
+                current_set = current_set.union(input_list[inner_index])
+                eliminated_indeces.add(inner_index)
+            
+            inner_index += 1
+            
+        output.append(current_set)
+        
+        outer_index += 1
+    
+    #print(output)
+    if(output == input_list):
+        return output
+    else:
+        return merge_list(output)
+
+def generate_gene_networks(gene_inter_file:str):
+    # Convert a collection of gene pairs into a set of gene networks
+    # The interacting gene pairs are stored in a text file, one gene pair per line
+    
+    gene_pairs = []
+    gene_networks = []
+    with open(gene_inter_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            gene_pairs.append({row[0], row[1]})
+            
+    gene_networks = merge_list(gene_pairs)       
+    
+    return gene_networks
+                
 def check_collection_overlap(collection1, collection2):
     for ele in collection1:
         if(ele in collection2):
@@ -227,8 +280,8 @@ def get_number_of_interacting_snps_in_interval(biclustering_file:str, bim_file:s
             
     #print('goodbye')
             
-    #print('chrom1_ranges: ', chrom1_ranges)
-    #print('chrom2_ranges: ', chrom2_ranges)
+    print('chrom1_ranges: ', chrom1_ranges)
+    print('chrom2_ranges: ', chrom2_ranges)
     
     gene_reg_locations = []
 
@@ -242,6 +295,9 @@ def get_number_of_interacting_snps_in_interval(biclustering_file:str, bim_file:s
     while i < num_interval_pairs:
         interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
         interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
+        #print(len(interval1))
+        #print(len(interval2))
+        
         #print(interval1)
         #print(interval2)
         
@@ -259,21 +315,27 @@ def get_number_of_interacting_snps_in_interval(biclustering_file:str, bim_file:s
                     for ele_loc in gene_reg_locations:
                         if(chrom1 == ele_loc[0] and int(loc1) >= int(ele_loc[1]) and int(loc1) <= int(ele_loc[2])):
                             element1 += ele_loc[3] + ' '
+                            
+                    #print(element1)
                     
                     chrom2_loc2 = snp2.split(':')
                     chrom2 = chrom2_loc2[0]
                     loc2 = chrom2_loc2[1]
                     element2 = ''
                     
+                    
                     for ele_loc in gene_reg_locations:
                         if(chrom2 == ele_loc[0] and int(loc2) >= int(ele_loc[1]) and int(loc2) <= int(ele_loc[2])):
                             element2 += ele_loc[3] + ' '
+                            
+                    #print(element2)
                             
                     if (element1, element2) not in interacting_pairs_per_interval:
                         interacting_pairs_per_interval[(element1, element2)] = 1 
                     else:
                         interacting_pairs_per_interval[(element1, element2)] += 1
         i += 1
+        print(interacting_pairs_per_interval)
                     
     return interacting_pairs_per_interval
     
@@ -302,7 +364,7 @@ def get_msigdb_enrichment(gene_pairs:set, out_dir:str):
 def parse_biclustering_results(biclustering_file:str, bim_file:str, gene_location_file:str,
                                chrom1:str, chrom2:str, interaction_files:list, pval_cutoff:float,
                                out_dir:str, single_file_output:bool = False):
-    # WARNING, The pval_cutoff should match the p-value cutoff used to conduc the biclustering analysis.
+    # WARNING, The pval_cutoff should match the p-value cutoff used to conduct the biclustering analysis.
     # Otherwise, the mapping of the interacting intervals to interacting genes will not make sense. 
     
     # Previously the intervals were mapped to all the genes/regulatory elements that at least partially 
@@ -816,8 +878,16 @@ def compute_interval_pval_parallel(km_results:dict, N:int, n:int, i_start:int, i
     # Assume that all k values are bigger than expected k-value of (m*n/N)
     
     computed_pvals = dict()
-    #correction = 0.05 / ((N**2) * (max_inter_length**2) * 0.5)
-    correction = 0.05/((N**2)*0.5)
+    # Conservative Bonferonni Correction
+    # In practice the number of tests is much smaller
+    correction = 0.05 / (N * (max_inter_length**2))
+    # this would be correct if we only computed 
+    # one chromosome pair, but unfortunately we need to account for all pairs
+    
+    # hard coded correction:
+    #correction = 0.05 / (60055879978 * 3600)
+    
+    
     if(chrom1 == '-1' or chrom2 == '-1'):
         filename = out_dir + 'pval_results_' + str(i_start) + '_' + str(i_end) + '.csv'
     else:
@@ -893,10 +963,11 @@ def trim_intervals(sorted_intervals:list):
             #print(i,j,a,b)
             #print(i2,j2,a2,b2)
             if(check_overlap(i,j,a,b,i2,j2,a2,b2)):
-                if(pval_inner <= pval_outer):
+                if(pval_inner < pval_outer):
                     indeces_to_delete.add(outer_count)
                 else:
                     indeces_to_delete.add(inner_count)
+                    #print("bye!")
                     
             inner_count += 1
             
@@ -1391,6 +1462,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
     def test_trim_intervals(self):
         in_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
         filename = in_dir + 'pval_results_0_1.csv'
+        
         pval_results = dict()
         with open(filename) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=',')
@@ -1398,13 +1470,35 @@ class TestBiClusterCodeBase(unittest.TestCase):
                 pval_results[(int(row[0]),int(row[1]),int(row[2]),int(row[3]))] = float(row[6])
         s_inter_pairs = sorted(pval_results.items(), key = lambda x: abs(x[1]), reverse = False)
         #print(len(s_inter_pairs))
+        #print(s_inter_pairs)
         trimmed_inter_pairs = trim_intervals(s_inter_pairs)
+        #print(trimmed_inter_pairs)
         
         #print(len(trimmed_inter_pairs))
         #print(trimmed_inter_pairs)
         expected_trimmed_inter_pairs = [((0, 816, 48, 8), 2.5317372178516744e-24),
                                         ((0, 999, 35, 3), 8.785313396735072e-16),
                                         ((0, 494, 35, 8), 3.520342278584121e-15)]
+        
+        i = 0
+        for inter_pair in trimmed_inter_pairs:
+            self.assertEqual(inter_pair, expected_trimmed_inter_pairs[i])
+            i += 1
+            
+        # COMPLETE THIS TEST CASE
+        filename = in_dir + 'chr1_chr2_pval_results.csv'
+        pval_results = dict()
+        with open(filename) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            for row in csv_reader:
+                pval_results[(int(row[0]),int(row[1]),int(row[2]),int(row[3]))] = float(row[6])
+        s_inter_pairs = sorted(pval_results.items(), key = lambda x: abs(x[1]), reverse = False)
+        trimmed_inter_pairs = trim_intervals(s_inter_pairs)
+        #print(trimmed_inter_pairs)
+        
+        expected_trimmed_inter_pairs = [((1, 41, 57, 59), 1.5052159828764328e-29),
+                                        ((65, 53, 35, 47), 5.109419105661788e-22),
+                                        ((45, 1, 55, 33), 1.5051851637750398e-21)]
         
         i = 0
         for inter_pair in trimmed_inter_pairs:
