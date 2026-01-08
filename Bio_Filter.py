@@ -144,11 +144,15 @@ def generate_remma_scripts(out_dir:str, filter_type:str, comp_type:str = 'approx
     i = 1
     while i <= num_jobs:
         fname_base = 'REMMA_' + grm_type + '_' + comp_type + '_parallel' + str(i) + '_'
-        fname_base += 'NA3_' + filter_type + '_region_qc3' 
+        #fname_base += 'NA3_' + filter_type + '_region_qc3' 
+        fname_base += filter_type
         
-        fname_base2 = grm_type + '_' + comp_type + '_parallel' + str(i) + '_NA3_' + filter_type + '_region_qc3' 
-        fname_base2_par1 = grm_type + '_' + comp_type + '_parallel1_NA3_' + filter_type + '_region_qc3' 
-        fname_base3 = 'NA3_' + filter_type + '_region_qc3' 
+        # fname_base2 = grm_type + '_' + comp_type + '_parallel' + str(i) + '_NA3_' + filter_type + '_region_qc3' 
+        fname_base2 = grm_type + '_' + comp_type + '_parallel' + str(i) + '_' + filter_type
+        # fname_base2_par1 = grm_type + '_' + comp_type + '_parallel1_NA3_' + filter_type + '_region_qc3' 
+        fname_base2_par1 = grm_type + '_' + comp_type + '_parallel1_' + filter_type
+        #fname_base3 = 'NA3_' + filter_type + '_region_qc3' 
+        fname_base3 = filter_type
         fname_py = fname_base + '.py'
         fname_sh = fname_base + '.sh'
         
@@ -178,7 +182,7 @@ def generate_remma_scripts(out_dir:str, filter_type:str, comp_type:str = 'approx
                     writer.write('from gmat.remma.remma_epiDD import remma_epiDD_approx_parallel\n')
             
             writer.write('# Step 1: Calculate the genomic relationship matrix\n')
-            writer.write("home_dir = '***ADD YOUR DIRECTORY HERE***'\n")
+            writer.write("home_dir = '/gpfs/group/home/slistopad/ABCD/smokescreen/'\n")
             writer.write("bed_file = home_dir + '" + fname_base3 + "'\n")
             if(i == 1):
                 writer.write("agmat(bed_file, home_dir + 'add_genom_rel_matrix_" + fname_base2_par1 + "')\n")
@@ -289,7 +293,8 @@ def generate_remma_scripts(out_dir:str, filter_type:str, comp_type:str = 'approx
         i += 1 
     
     fname_base1 = 'REMMA_' + grm_type + '_' + comp_type + '_parallel'
-    fname_base2 = '_NA3_' + filter_type + '_region_qc3' 
+    # fname_base2 = '_NA3_' + filter_type + '_region_qc3' 
+    fname_base2 = filter_type
     
     fname_base = fname_base1 + '_array' + fname_base2
     fname_sh = fname_base1 + '_array' + fname_base2 + '.sh'
@@ -310,6 +315,46 @@ def generate_remma_scripts(out_dir:str, filter_type:str, comp_type:str = 'approx
         writer2.write("export PYTHONPATH=/gpfs/home/slistopad/.local/lib/python3.8/site-packages:$PYTHONPATH\n")
         writer2.write("python3 " + fname_py + "\n")
 
+def impute_SimpleM(file:str):
+    '''Replace NA genotypes with 0 in the SimpleM file. Output the new file.'''
+    rows = []
+    with open(file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=' ')
+        i = 0
+        for row in csv_reader:
+            # print(row)
+            imputed_row = []
+            for geno in row:
+                #print(geno)
+                if(geno == 'NA'):
+                    imputed_row.append('0')
+                    #print("YYY")
+                else:
+                    imputed_row.append(geno)
+                    #print("XXX")
+            
+            #print(imputed_row)
+            #print(len(imputed_row))
+            rows.append(imputed_row)
+            #print(len(rows))
+            i += 1
+            # if(i == 5):
+            #     break
+            
+    fname_out = file[0:-4] + '_imputed.txt'
+    with open(fname_out, 'w') as writer:
+        for row in rows:
+            num_samples = len(row)
+            #print(num_samples)
+            i = 0
+            while i < num_samples:
+                writer.write(row[i])
+                if(i == (num_samples - 1)):
+                    writer.write('\n')
+                else:
+                    writer.write(' ')
+                i += 1
+               
 def convert_plink_raw_to_simpleM(file:str, delim:str):
     '''Ignore first six columns. Takes each column starting with 7th, read it in fully 
     starting from line 2, and then write it out as a row into another file with same name,
@@ -334,7 +379,7 @@ def convert_plink_raw_to_simpleM(file:str, delim:str):
                 i += 1
             
             j += 1
-            print(j)
+            #print(j)
     
     #print(rows)
     fname_out = file[0:-4] + '_simpleM.txt'
@@ -1315,7 +1360,7 @@ def test_suite():
     runner = unittest.TextTestRunner()
     runner.run(unit_test_suite)
 
-test_suite()
+# test_suite()
 
 # CORRECTING GENE LOCATIONS FOR COMPLEX GENES (THAT HAVE MULTIPLE ALTERNATIVE NON OVERLAPPING LOCATIONS)
 '''
@@ -1332,8 +1377,8 @@ alt_gene_ranges = generate_all_assosciated_transcript_ranges(incorrect_genes, ge
 
 # GENERATE REMMA SCRIPTS
 # out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Scripts/'
-# generate_remma_scripts(out_dir, 'Combined_Fixed_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001',
-#                        grm_type = 'aa1', num_jobs = 256, p_cut_off = 1e-5)
+# generate_remma_scripts(out_dir, 'ABCD_202209.updated.nodups.curated.cleaned_indivs_chr11',
+#                        grm_type = 'dd', num_jobs = 16, p_cut_off = 1.64e-9)
     
 # FOLLOW UP REGULATION ANALYSIS
 # fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Strict_Set_Biclustering/'
@@ -1356,8 +1401,10 @@ alt_gene_ranges = generate_all_assosciated_transcript_ranges(incorrect_genes, ge
 
 
 # CONVERT PLINK FILE INTO simpleM FILE
-# full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
-# convert_plink_raw_to_simpleM(full_dir + 'NA3_Combined_Set_score900_db001_and_exp001_1_and_genehancer_score25_maf001_region_qc3.raw', ' ')
+# full_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch6_DeepLearning/Externalizing_Epistasis/'
+#convert_plink_raw_to_simpleM(full_dir + 'ABCD_202209.updated.nodups.curated.cleaned_indivs_chr11.raw', ' ')
+# file = full_dir + 'ABCD_202209.updated.nodups.curated.cleaned_indivs_chr11_simpleM.txt'
+# impute_SimpleM(file)
 
 
 # COMPARE SIMILARITY OF TWO REMMA ANNO RESULT FILES
@@ -1393,7 +1440,7 @@ print(four)
 
 
 # MISCELANEOUS
-
+'''
 snps = set()
 indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/Combined_Fixed_Set_Biclustering/'
 marker_file1 = 'Combined_Fixed_Set_AA1_GENES.txt'
@@ -1413,3 +1460,4 @@ for file in marker_files:
                 snps.add((row[1], row[3]))
                 
 print(len(snps))
+'''

@@ -5,6 +5,7 @@ Created on Mon Feb 19 02:54:48 2024
 @author: staslist
 """
 
+import re
 import csv
 import unittest
 import numpy as np
@@ -342,7 +343,7 @@ def get_number_of_interacting_snps_in_interval(biclustering_file:str, bim_file:s
 def get_msigdb_enrichment(gene_pairs:set, out_dir:str):
     #print(pairs)
     pairs_map = dict()
-    fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Pathways/c2.all.v2023.2.Hs.symbols.gmt'
+    fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Pathways/c2.all.v2023.2.Hs.symbols.gmt'
     with open(fname) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter='\t')
         for row in csv_reader:
@@ -359,19 +360,129 @@ def get_msigdb_enrichment(gene_pairs:set, out_dir:str):
     with open(fname_out, 'w') as writer:
         for k,v in pairs_map.items():
             writer.write(str(k) + ' : ' + str(v) + '\n')
-        
+       
+def parse_biclustering_annotation(bicluster_file_annot:str):
+    element_pairs_dict = dict()
+    element_pairs_annotated = []
+    element_pairs_per_interval = []
+    unique_interacting_snps = []
+    interacting_snp_pairs_all_intervals = []
+    regulatory_elements_all = set()
+    with open(bicluster_file_annot) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter='\t')
+        for row in csv_reader:
+            # If the row is not empty
+            if(len(row) == 0):
+                continue
+            if(len(row[0]) > 0 and 'Interacting snp pairs:' not in row[0] and 
+               'Interacting num snp pairs:' not in row[0] and 'Total number of unique' not in row[0]):
+                # There must be at least one gene/reg element pair
+                # It must be surrounded by (" ")
+                interval_pair = row[0]
+                interval_pair_split = interval_pair.split("),")
+                pval = row[1]
+                element_pairs_annotated2 = []
+                for element_pair in interval_pair_split:
+                    #print(element_pair)
+                    element2_begin = element_pair.find('element2:')
+                    r = 0
+                    record_element = False
+                    element1_set = set()
+                    element1 = ''
+                    while r < (element2_begin-1):
+                        #print(element_pair)
+                        #print(i)
+                        char = element_pair[r]
+                        if(char == "'"):
+                            if(record_element):
+                                if('GH' in element1 and len(element1) == 11):
+                                    regulatory_elements_all.add(element1)
+                                    element1 = ''
+                                else:
+                                    element1_set.add(element1)
+                                    element1 = ''
+                            record_element = not record_element
+                        if(record_element and char!= "'"):
+                            element1 += char
+                        r += 1
+                        
+                    #print('Element1: ', element1_list)
+                        
+                    r = element2_begin
+                    record_element = False
+                    element2_set = set()
+                    element2 = ''
+                    while r < len(element_pair):
+                        #print(interval_pair)
+                        #print(r)
+                        #print(element_pair_end-2)
+                        #print(char)
+                        char = element_pair[r]
+                        #print(char)
+                        if(char == "'"):
+                            if(record_element):
+                                if('GH' in element2 and len(element2) == 11):
+                                    regulatory_elements_all.add(element2)
+                                    element2 = ''
+                                else:
+                                    element2_set.add(element2)
+                                    element2 = ''
+                            record_element = not record_element
+                        if(record_element and char!= "'"):
+                            element2 += char
+                        r += 1
+                        
+                    #print('Element2: ', element2_list)
+                    element_pair_tuple = (element1_set, element2_set)
+                    if(element_pair_tuple not in element_pairs_annotated):
+                        element_pairs_annotated.append((element1_set, element2_set))
+                    if(element_pair_tuple not in element_pairs_annotated2):
+                        element_pairs_annotated2.append((element1_set, element2_set))
+                    
+                    element_pair_str = str((element1_set, element2_set))
+                    element_pair_str_reverse = str((element2_set, element1_set))
+                    if(element_pair_str in element_pairs_dict):
+                        if(pval < element_pairs_dict[element_pair_str]):
+                            element_pairs_dict[element_pair_str] = pval
+                    elif(element_pair_str_reverse in element_pairs_dict):
+                        if(pval < element_pairs_dict[element_pair_str_reverse]):
+                            element_pairs_dict[element_pair_str_reverse] = pval
+                    else:
+                        element_pairs_dict[element_pair_str] = pval
+                element_pairs_per_interval.append(element_pairs_annotated2)
+                        
+            elif('Total number of unique' in row[0]):
+                split_row = row[0].split(';')[1:]
+                #print(split_row)
+                unique_interacting_snps_in_interval = set()
+                for unique_snp in split_row:
+                    if(':' in unique_snp):
+                        unique_interacting_snps_in_interval.add(unique_snp)
+                unique_interacting_snps.append(unique_interacting_snps_in_interval)
+                
+            elif('Interacting snp pairs:' in row[0]):
+                current_row = row[0]
+                pattern = "('\d+:\d+', '\d+:\d+')"
+                matches = re.findall(pattern, current_row)
+                interacting_snp_pairs_all = set()
+                for snp_pair_string in matches:
+                    snp_pair_string = snp_pair_string.replace("'", "")
+                    match_split = snp_pair_string.split(', ')
+                    #print(match_split)
+                    if((match_split[1], match_split[0]) not in interacting_snp_pairs_all):
+                        interacting_snp_pairs_all.add( (match_split[0], match_split[1]) )
+                interacting_snp_pairs_all_intervals.append(interacting_snp_pairs_all)
+                    
+    return element_pairs_dict, element_pairs_annotated, unique_interacting_snps, interacting_snp_pairs_all_intervals, element_pairs_per_interval, regulatory_elements_all
 
 def parse_biclustering_results(biclustering_file:str, bim_file:str, gene_location_file:str,
-                               chrom1:str, chrom2:str, interaction_files:list, pval_cutoff:float,
-                               out_dir:str, single_file_output:bool = False):
+                               gene_hancer_file:str, chrom1:str, chrom2:str, interaction_files:list,
+                               pval_cutoff:float, out_dir:str, single_file_output:bool = False,
+                               snp_list_output:bool = False, strict_annotation:bool = True):
     # WARNING, The pval_cutoff should match the p-value cutoff used to conduct the biclustering analysis.
     # Otherwise, the mapping of the interacting intervals to interacting genes will not make sense. 
-    
-    # Previously the intervals were mapped to all the genes/regulatory elements that at least partially 
-    # overlap with the interval. This is no longer the case.
-    # Currently, we first identify all the interacting snps within the intervals. 
-    # And then we identify all the genes/regulatory elements that those interacting snps belong to. 
-    # print(biclustering_file)
+    # strict annotation = only map interacting snp pairs to genes/reg elements, 
+    # loose annotation = map all snp pairs contained within interacting interval to genes/reg elements
     
     chrom1_snps, chrom2_snps = parse_plink_bim_file(bim_file, chrom1, chrom2)
     
@@ -386,15 +497,35 @@ def parse_biclustering_results(biclustering_file:str, bim_file:str, gene_locatio
             range2 = (int(row[1]), int(row[1]) + int(row[3]))
             chrom2_ranges.append(range2)
             p_values.append(row[4])
+    
             
-    #print('goodbye')
-            
-    gene_reg_locations = []
-
-    with open(gene_location_file) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=' ')
+    # modify this section depending on the gene_location_file used
+    # herein I assume usage of ucsc-hg19
+    # first read in and map the transcripts to the gene names
+    transcript_to_gene_name = dict()
+    kgXref_file = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Gene_Annotations/ucsc-hg19-kgXref.txt'
+    with open(kgXref_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter='\t')
         for row in csv_reader:
-            gene_reg_locations.append((row[0],row[1],row[2],row[3]))
+            transcript_to_gene_name[row[0]] = row[1]
+    
+    gene_reg_locations = []
+    with open(gene_location_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter='\t')
+        for row in csv_reader:
+            gene_reg_locations.append((row[1][3:],row[2],row[3],transcript_to_gene_name[row[0]]))
+            
+    # We also need to account for all the regulatory elements located within the genes 
+    # that were used in epistasis analysis
+    
+    with open(gene_hancer_file) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter='\t')
+        first_line = True
+        for row in csv_reader:
+            if(first_line):
+                first_line = False
+                continue
+            gene_reg_locations.append((row[0][3:],row[1],row[2],row[3]))
             
     #print("gene_reg_locations: ", gene_reg_locations)
             
@@ -406,62 +537,184 @@ def parse_biclustering_results(biclustering_file:str, bim_file:str, gene_locatio
     #print("Interactions: ", interactions)
     
     if(not single_file_output):
-        filename = out_dir + 'biclustering_results_chr' + chrom1 + '_chr' + chrom2 + '_annotated.txt'
-        with open(filename, 'w') as writer:
-            i = 0
-            num_interval_pairs = len(chrom1_ranges)
-            while i < num_interval_pairs:
-                gene_pairs = set()
-                interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
-                interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
-                p_val = p_values[i]
-                
-                #print("Interval1: ", interval1)
-                #print("Interval2: ", interval2)
-                
-                for snp in interval1:
-                    for snp2 in interval2:
-                        #print(snp, snp2)
-                        if( (snp, snp2) in interactions or (snp2, snp) in interactions ):
-                            
-                            #print("Found SNP pair in interactions!")
+        if(not snp_list_output):
+            
+            if(strict_annotation):
+                filename = out_dir + 'biclustering_results_chr' + chrom1 + '_chr' + chrom2 + '_annotated.txt'
+            else:
+                filename = out_dir + 'biclustering_results_chr' + chrom1 + '_chr' + chrom2 + '_annotated_loosely.txt'
+            with open(filename, 'w') as writer:
+                i = 0
+                num_interval_pairs = len(chrom1_ranges)
+                while i < num_interval_pairs:
+                    
+                    gene_pair_to_num_interacting_snp_pairs = dict()
+                    gene_pair_to_interacting_snp_pairs = dict()
+                    
+                    gene_pairs = set()
+                    interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
+                    interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
+                    p_val = p_values[i]
+                    
+                    #print("Interval1: ", interval1)
+                    #print("Interval2: ", interval2)
+                    
+                    if(strict_annotation):
+                        for snp in interval1:
+                            for snp2 in interval2:
+                                #print(snp, snp2)
+                                if( (snp, snp2) in interactions or (snp2, snp) in interactions ):
+                                    # Need to identify number of interacting snp pairs belonging to each gene pair
+                                    
+                                    #print("Found SNP pair in interactions!")
+                                    chrom1_loc1 = snp.split(':')
+                                    chrom1 = chrom1_loc1[0]
+                                    loc1 = chrom1_loc1[1]
+                                    element1 = set()
+                                    
+                                    #print('chrom1: ', chrom1)
+                                    #print('loc1: ', loc1)
+                                    
+                                    element_name1 = 'intergenic'
+                                    for ele_loc in gene_reg_locations:
+                                        if(chrom1 == ele_loc[0] and int(loc1) >= int(ele_loc[1]) and int(loc1) <= int(ele_loc[2])):
+                                            # There are a small number of overlapping genes, these are the 
+                                            # poorly defined genes, such as MICB and HLA-C, for whom the exact 
+                                            # loci are not yet fully established.
+                                            element_name1 = ele_loc[3]
+                                            element1.add(element_name1)
+                                            
+                                    #print('Element1: ', element1)
+                                    if(len(element1) == 0):
+                                        element1.add(element_name1)
+                                    
+                                    chrom2_loc2 = snp2.split(':')
+                                    chrom2 = chrom2_loc2[0]
+                                    loc2 = chrom2_loc2[1]
+                                    element2 = set()
+                                    
+                                    #print('chrom2: ', chrom2)
+                                    #print('loc2: ', loc2)
+                                    
+                                    element_name2 = 'intergenic'
+                                    for ele_loc in gene_reg_locations:
+                                        if(chrom2 == ele_loc[0] and int(loc2) >= int(ele_loc[1]) and int(loc2) <= int(ele_loc[2])):
+                                            element_name2 = ele_loc[3]
+                                            element2.add(element_name2)
+                                            
+                                    #print('Element2: ', element2)
+                                    if(len(element2) == 0):
+                                        element2.add(element_name2)
+                                    
+                                    for ele_name1 in element1:
+                                        for ele_name2 in element2:
+                                            if((ele_name1, ele_name2) not in gene_pair_to_num_interacting_snp_pairs and 
+                                               (ele_name2, ele_name1) not in gene_pair_to_num_interacting_snp_pairs):
+                                                gene_pair_to_num_interacting_snp_pairs[(ele_name1, ele_name2)] = 1
+                                                gene_pair_to_interacting_snp_pairs[(ele_name1, ele_name2)] = [(snp, snp2)]
+                                            elif((ele_name1, ele_name2) in gene_pair_to_num_interacting_snp_pairs):
+                                                gene_pair_to_num_interacting_snp_pairs[(ele_name1, ele_name2)] += 1
+                                                gene_pair_to_interacting_snp_pairs[(ele_name1, ele_name2)].append((snp, snp2))
+                                            elif((ele_name2, ele_name1) in gene_pair_to_num_interacting_snp_pairs):
+                                                gene_pair_to_num_interacting_snp_pairs[(ele_name2, ele_name1)] += 1
+                                                gene_pair_to_interacting_snp_pairs[(ele_name2, ele_name1)].append((snp2, snp))
+                                      
+                                    #print(gene_pair_to_num_interacting_snp_pairs)
+                                    gene_pairs.add( ('element1: '+ str(element1), 'element2: ' + str(element2)) )
+                        writer.write(str(gene_pairs) + '\t')
+                        writer.write(p_values[i] + '\n')
+                        writer.write('Interacting num snp pairs: ' + str(gene_pair_to_num_interacting_snp_pairs) + '\n')
+                        writer.write('Interacting snp pairs: ' + str(gene_pair_to_interacting_snp_pairs) + '\n')
+                        current_union = set()
+                        for k,v in gene_pair_to_interacting_snp_pairs.items():
+                            current_union = current_union | set(v)
+                        writer.write('Total number of unique interacting pairs: ' + str(len(current_union)) + ';')
+                        unique_interacting_snps = set()
+                        for unique_snp_pair in current_union:
+                            unique_interacting_snps.add(unique_snp_pair[0])
+                            unique_interacting_snps.add(unique_snp_pair[1])
+                        for unique_snp in unique_interacting_snps:
+                            writer.write(str(unique_snp) + ';')
+                        writer.write('\n\n')
+                    else:
+                        elements1 = set()
+                        for snp in interval1:
                             chrom1_loc1 = snp.split(':')
                             chrom1 = chrom1_loc1[0]
                             loc1 = chrom1_loc1[1]
-                            element1 = ''
-                            
-                            #print('chrom1: ', chrom1)
-                            #print('loc1: ', loc1)
+                            element1 = set()
                             
                             for ele_loc in gene_reg_locations:
                                 if(chrom1 == ele_loc[0] and int(loc1) >= int(ele_loc[1]) and int(loc1) <= int(ele_loc[2])):
-                                    # There are a small number of overlapping genes, these are the 
-                                    # poorly defined genes, such as MICB and HLA-C, for whom the exact 
-                                    # loci are not yet fully established.
-                                    element1 += ele_loc[3] + ' '
+                                    element1.add(ele_loc[3])
+                                    #print(element1)
                                     
-                            #print(element1)
-                            
+                            elements1.add(str(element1))
+                        elements2 = set()
+                        for snp2 in interval2:
                             chrom2_loc2 = snp2.split(':')
                             chrom2 = chrom2_loc2[0]
                             loc2 = chrom2_loc2[1]
-                            element2 = ''
-                            
-                            #print('chrom2: ', chrom2)
-                            #print('loc2: ', loc2)
-                            
+                            element2 = set()
+                            #print(loc2)
+                             
                             for ele_loc in gene_reg_locations:
                                 if(chrom2 == ele_loc[0] and int(loc2) >= int(ele_loc[1]) and int(loc2) <= int(ele_loc[2])):
-                                    element2 += ele_loc[3] + ' '
-                                    
-                            #print(element2)
-                            
-                            gene_pairs.add((element1, element2))
-                
-                writer.write(str(gene_pairs) + '\t')
-                writer.write(p_values[i] + '\n')
-                
-                i += 1
+                                    element2.add(ele_loc[3])
+                            elements2.add(str(element2))
+                                 
+                        writer.write(str( (elements1,elements2) ) + '\t')
+                        writer.write(p_values[i] + '\n')
+                    
+                    i += 1
+        else:
+            #print("HELLO!")
+            filename = out_dir + 'biclustering_results_chr' + chrom1 + '_chr' + chrom2 + '_snplist_interacting_pairs.txt'
+            with open(filename, 'w') as writer:
+                num_interval_pairs = len(chrom1_ranges)
+                i = 0
+                while i < num_interval_pairs:
+                    gene_pairs = set()
+                    interval1 = chrom1_snps[chrom1_ranges[i][0]:chrom1_ranges[i][1]]
+                    interval2 = chrom2_snps[chrom2_ranges[i][0]:chrom2_ranges[i][1]]
+                    
+                    # format for liftover tool
+                    snp1_info = interval1[0].split(':')
+                    snp1_chrom,snp1_loci = snp1_info[0],snp1_info[1]
+                    snp2_info = interval1[-1].split(':')
+                    snp2_chrom,snp2_loci = snp2_info[0],snp2_info[1]
+                    
+                    #writer.write(snp1_chrom + ' ' + snp1_loci + ' ' + snp2_loci + '\n')
+                    
+                    snp1_info = interval2[0].split(':')
+                    snp1_chrom,snp1_loci = snp1_info[0],snp1_info[1]
+                    snp2_info = interval2[-1].split(':')
+                    snp2_chrom,snp2_loci = snp2_info[0],snp2_info[1]
+                    
+                    #writer.write(snp1_chrom + ' ' + snp1_loci + ' ' + snp2_loci + '\n')
+                    
+                    for snp in interval1:
+                        for snp2 in interval2:
+                            #print(snp, snp2)
+                            if( (snp, snp2) in interactions or (snp2, snp) in interactions ):
+                                writer.write(snp + ' : ')
+                                writer.write(snp2 + '\n')
+                                
+                                snp1_info = snp.split(':')
+                                snp1_chrom,snp1_loci = snp1_info[0],snp1_info[1]
+                                
+                                snp2_info = snp2.split(':')
+                                snp2_chrom,snp2_loci = snp2_info[0],snp2_info[1]
+                                
+                                print("plink --bfile /gpfs/group/home/slistopad/REMMA/data/native_american/", end='')
+                                print('NA3_Combined_Fixed_Set_score900_db001_and_exp001_1_and_genehancer', end='')
+                                print('_score25_maf001_region_qc3 --ld ' + snp + ' ' + snp2 + ' --r2 ', end='')
+                                print('--out /gpfs/group/home/slistopad/REMMA/data/native_american/Biclustering_SNPLists/', end='')
+                                print('Combined_Fixed2_Set_Biclustering/biclustering_results_ld_' + snp1_chrom, end='')
+                                print('_' + snp1_loci + '_' + snp2_chrom + '_' + snp2_loci)
+                     
+                    i += 1
+                    
     else:
         # Note, what is put into the file, are the locations of the genes, which contain 
         # interacting SNPs within the interacting intervals. 
@@ -988,7 +1241,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
     
     def test_get_msigdb_enrichment(self):
         gene_pairs = {('ABAT', 'ACOX1'), ('CSMD1', 'DLGAP1')}
-        out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Test/'
         get_msigdb_enrichment(gene_pairs, out_dir)
         
         fname = out_dir + 'biclustering_results_msigdb_enrichment.txt'
@@ -1003,7 +1256,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         self.assertEqual(line, exp_line)
     
     def test_parse_remma_interaction_data(self):
-        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Test/'
         ad_anno = indir + 'epiAD_ad_NA3_Combined_Strict_Set_Brief.anno'
         dd_anno = indir + 'epiDD_dd_NA3_Combined_Strict_Set_Brief.anno'
         interactions = parse_remma_interaction_data([ad_anno, dd_anno], 1e-6, '1', '20')
@@ -1020,7 +1273,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         
     
     def test_get_number_of_interacting_snps_in_interval(self):
-        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Test/'
         biclustering_file = indir + 'biclustering_results_chr1_chr5.txt'
         bim_file = indir + 'NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.bim'
         gene_location_file = indir + 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
@@ -1032,7 +1285,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         self.assertEqual(inter_pairs_per_interval[('DISC1 ', 'SLIT3 ')], 5)
         
     def test_parse_biclustering_results(self):
-        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/REMMA_Results/'
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/REMMA_Results/'
         marker_file1 = 'epiAA_aa1_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
         marker_file2 = 'epiAA_aa2_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
         marker_file3 = 'epiAA_aa3_approx_parallel_merged_NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.anno'
@@ -1041,7 +1294,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         
         marker_files = [indir + marker_file1, indir + marker_file2, indir + marker_file3, indir + marker_file4, indir + marker_file5]
         
-        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Test/'
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Test/'
         biclustering_file = indir + 'biclustering_results_chr1_chr3.txt'
         bim_file = indir + 'NA3_Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_maf001_region_qc3.bim'
         gene_location_file = indir + 'Combined_Strict_Set_score900_db001_or_exp001_1_and_genehancer_score10_ranges.txt'
@@ -1087,7 +1340,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         os.remove(indir + 'biclustering_results_all.txt')
     
     def test_generate_gene_blocks(self):
-        fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
+        fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Biclustering/Test_Input/'
         fname += 'Test_Ranges.txt'
         blocks = generate_gene_blocks(fname, 3000)
         expected_blocks = [{'TEST3'}, {'TEST4'}, {'TEST5'}, {'TEST6'}, {'TEST11'}, {'TEST12'},
@@ -1140,7 +1393,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
     
     def test_initialize_matrices(self):
         total_markers = 10
-        fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/TenByTen.txt'
+        fname = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Biclustering/Test_Input/TenByTen.txt'
         N, n, inter_matrix, upper_tri = initialize_matrices(total_markers, fname)
         
         inter_matrix_exp = dict()
@@ -1183,7 +1436,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
             i += 1  
             
     def test_initialize_matrices2(self):
-        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Biclustering/Test_Input/'
         bim_file = indir + 'Test_Data.bim'
         inter_file = indir + 'Test_Interaction.anno'
         chrom1 = '1'
@@ -1205,7 +1458,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
                 j += 1
             i += 1
                 
-        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
+        indir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Biclustering/Test_Input/'
         bim_file = indir + 'Test_Data.bim'
         inter_file = indir + 'Test_Interaction.anno'
         chrom1 = '2'
@@ -1422,7 +1675,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         # Note, technically, the last parameter should be 3, but we enter 0 
         # to force all k,m pairs to be written.
         km_results = compute_k_m_parallel(4, inter_array, True, 0, 9, 45, 0)
-        out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Output/'
+        out_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Biclustering/Test_Output/'
         pval_results = compute_interval_pval_parallel(km_results, 45, 3, 0, 9, 4, out_dir)
         #print(pval_results)
         
@@ -1460,7 +1713,7 @@ class TestBiClusterCodeBase(unittest.TestCase):
         
         
     def test_trim_intervals(self):
-        in_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_NA_Cohort/Biclustering/Test_Input/'
+        in_dir = 'C:/Stas/LabWork/Bioinformatics/Projects/Ch5_AI_AUD/Biclustering/Test_Input/'
         filename = in_dir + 'pval_results_0_1.csv'
         
         pval_results = dict()
