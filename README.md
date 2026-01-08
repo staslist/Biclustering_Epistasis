@@ -7,6 +7,7 @@ Code related to (bi)clustering of SNP-SNP interaction results into interval-inte
 BiClustering.py primarily contains code used in the bi-clustering algorithm. It also contains some code used to parse and annotate the interacting intervals output by bi-clustering.
 Bio_Filter.py primarily contains code used to pre-filter the SNPs before conducting epistasis procedure.
 hg19_to_hg38_ranges.py primarily contains code used to liftover the hg19 interacting interval loci to hg38.
+The code used to conduct replication epistasis/bi-clustering analysis in All of Us (AoU) cohort is contained within the AoU workbench. However, can be provided upon request.
 
 For further explanation or detail please contact me via email or by posting an issue to this repository.
 
